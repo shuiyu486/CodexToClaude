@@ -40,19 +40,19 @@ none
 CodexToClaude-GUI.cmd
 ```
 
-GUI 中按顺序操作：
+GUI 支持中文/English 界面切换，并会记住语言选择、上次填写的连接信息和首次向导完成状态。
+
+![CodexToClaude GUI 快速开始向导](docs/assets/gui-quick-start.png)
+
+首次使用建议按 `Quick start wizard` / `快速开始向导` 操作：
 
 1. 填写 `Port`，例如 `8317`。
 2. 填写 `ProxyUrl`，例如 `http://127.0.0.1:7897`；直连填 `none`。
-3. 点击 `Install`。
-4. 点击 `Login`。
-   - 如果普通登录不方便，勾选 `Use device login` 后再点 `Login`。
-5. 确认顶部 `Login status` 显示已登录。
-6. 点击 `Configure`。
-7. 点击 `Restart`。
-8. 点击 `Verify`。
+3. 依次执行 `Install` → `Login` → `Configure` → `Restart` → `Verify`。
+4. 如果普通登录不方便，勾选 `Use device login` / `使用设备码登录` 后再执行 `Login`。
+5. 确认顶部 `Login status` / `登录状态` 显示已登录。
 
-GUI 会显示当前登录状态，并在登录失败时给出排障建议。
+`Main flow` / `主流程` 保留常用步骤按钮；`Advanced and diagnostics` / `高级与诊断` 提供 `Start`、`Stop`、`Status`、`Doctor`、刷新登录状态和打开目录等操作。GUI 会显示当前登录状态，并在登录失败时给出排障建议。
 
 ## CLI 用法
 

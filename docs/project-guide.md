@@ -52,11 +52,24 @@ CodexToClaude/
 
 `scripts/CodexToClaude.UI.ps1` 是 WinForms wrapper。
 
-- GUI 只收集参数和调用 `CodexToClaude.ps1`。
-- 不重复实现业务逻辑。
+- GUI 只收集参数、展示状态、编排步骤和调用 `CodexToClaude.ps1`。
+- 不重复实现安装、登录、配置、启停、认证解析等业务逻辑。
 - `Install` / `Configure` 必须要求 `Port` 和 `ProxyUrl`。
 - `ProxyUrl` 直连必须显式输入 `none` 或 `direct`。
 - GUI 启动和登录后都要刷新 `Login status`。
+- 登录状态以 `auth-status -Json` 为唯一真源。
+
+## GUI 语言与首次向导维护约定
+
+GUI 使用单文件数据驱动结构，仍不引入 Node/.NET 打包链路。
+
+- 中英文文案集中在 `CodexToClaude.UI.ps1` 的 `$I18N` 表；新增用户可见文案必须同步 `zh-CN` 和 `en-US`。
+- 界面文本通过稳定 key 绑定控件；不要把新文案散落在事件处理器里。
+- 语言、首次向导完成状态和最近输入保存到 `~/.codextoclaude/ui-preferences.json`。
+- 偏好文件只保存 UI 状态和普通输入，不保存 OAuth JSON、token、日志内容。
+- 快速开始向导只映射 `Install -> Login -> Configure -> Restart -> Verify`，每步仍调用 CLI 子命令。
+- 高级/诊断操作与首次向导分区展示，避免再次退化为按钮墙。
+- 调整向导顺序或文案时，同步 README 的用户步骤、本文档的维护约定和 `CLAUDE.local.md` 的速记规则。
 
 ## 配置写入规则
 
@@ -161,6 +174,8 @@ GUI 修改后至少验证：
 
 - `scripts/CodexToClaude.UI.ps1` 可被 PowerShell parser 解析。
 - `CodexToClaude-GUI.cmd` 存在。
+- 中英文切换后主要标签、按钮和弹窗文案可读。
+- 首次向导步骤仍按 `Install -> Login -> Configure -> Restart -> Verify` 调用 CLI。
 
 ## 常见迭代任务
 
@@ -170,7 +185,7 @@ GUI 修改后至少验证：
 
 ### 改 GUI 字段
 
-只改 `CodexToClaude.UI.ps1` 的参数收集和布局；业务逻辑仍放在 CLI 主脚本。
+只改 `CodexToClaude.UI.ps1` 的参数收集、布局、文案表和步骤编排；业务逻辑仍放在 CLI 主脚本。新增用户可见文案必须同时补齐 `zh-CN` 和 `en-US`。
 
 ### 改登录诊断
 
