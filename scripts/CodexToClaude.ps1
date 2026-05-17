@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'help')]
+    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'project-version', 'project-update', 'cliproxy-version', 'cliproxy-update', 'models', 'configure-models', 'help')]
     [string]$Command = 'help',
 
     [int]$Port,
@@ -53,6 +53,12 @@ function Show-Help {
     Write-Host '  auth-status  Show Codex OAuth login/auth status'
     Write-Host '  verify       Verify /v1/models and /v1/messages'
     Write-Host '  doctor       Run status and verify'
+    Write-Host '  project-version   Show CodexToClaude git version status'
+    Write-Host '  project-update    Safely update CodexToClaude with git pull --ff-only'
+    Write-Host '  cliproxy-version  Show local and latest CLIProxyAPI version'
+    Write-Host '  cliproxy-update   Stop, update, and restart CLIProxyAPI latest release'
+    Write-Host '  models            Show configured Claude model env values'
+    Write-Host '  configure-models  Update Claude model env values'
     Write-Host ''
     Write-Host 'Required setup values:' -ForegroundColor Yellow
     Write-Host '  -Port      Local CLIProxyAPI listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 8317'
@@ -130,6 +136,31 @@ function Resolve-ProxyUrl([bool]$RequirePrompt) {
 
 function Ensure-InstallDir { if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Force $InstallDir | Out-Null } }
 
+function Get-CLIProxyLatestRelease {
+    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing
+    $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
+    if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
+    return [pscustomobject]@{ release = $release; asset = $asset }
+}
+
+function Install-CLIProxyAsset([string]$DownloadUrl, [string]$AssetName, [string]$DestinationPath) {
+    Ensure-InstallDir
+    $downloadPath = Join-Path $InstallDir $AssetName
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $downloadPath -UseBasicParsing
+    if ($downloadPath -match '\.exe$') {
+        Move-Item -Force $downloadPath $DestinationPath
+    } else {
+        $extractDir = Join-Path $InstallDir 'download-extract'
+        if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+        Expand-Archive -Path $downloadPath -DestinationPath $extractDir -Force
+        $exe = Get-ChildItem $extractDir -Recurse -Filter 'cli-proxy-api.exe' | Select-Object -First 1
+        if (-not $exe) { throw 'Downloaded archive does not contain cli-proxy-api.exe.' }
+        Copy-Item -Force $exe.FullName $DestinationPath
+        Remove-Item $extractDir -Recurse -Force
+        Remove-Item $downloadPath -Force
+    }
+}
+
 function Download-CLIProxyApi {
     if (Test-Path $ExePath) {
         Write-OK "cli-proxy-api.exe exists: $ExePath"
@@ -138,23 +169,8 @@ function Download-CLIProxyApi {
 
     Write-Step 'Downloading CLIProxyAPI latest release'
     try {
-        $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing
-        $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
-        if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
-        $downloadPath = Join-Path $InstallDir $asset.name
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath -UseBasicParsing
-        if ($downloadPath -match '\.exe$') {
-            Move-Item -Force $downloadPath $ExePath
-        } else {
-            $extractDir = Join-Path $InstallDir 'download-extract'
-            if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
-            Expand-Archive -Path $downloadPath -DestinationPath $extractDir -Force
-            $exe = Get-ChildItem $extractDir -Recurse -Filter 'cli-proxy-api.exe' | Select-Object -First 1
-            if (-not $exe) { throw 'Downloaded archive does not contain cli-proxy-api.exe.' }
-            Copy-Item -Force $exe.FullName $ExePath
-            Remove-Item $extractDir -Recurse -Force
-            Remove-Item $downloadPath -Force
-        }
+        $latest = Get-CLIProxyLatestRelease
+        Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $ExePath
         Write-OK "Downloaded: $ExePath"
     } catch {
         Write-Fail "Automatic download failed: $($_.Exception.Message)"
@@ -509,6 +525,158 @@ function Verify-Setup([int]$ResolvedPort) {
     Test-ClaudeStreamJson $ResolvedPort
 }
 
+function Get-RepoRoot { return (Split-Path -Parent $PSScriptRoot) }
+
+function Invoke-Git([string[]]$Arguments) {
+    $git = Get-Command git.exe -ErrorAction SilentlyContinue
+    if (-not $git) { throw 'git.exe not found. Install Git for Windows before using project update.' }
+    $output = & $git.Source -C (Get-RepoRoot) @Arguments 2>&1
+    if ($LASTEXITCODE -ne 0) { throw ($output | Out-String).Trim() }
+    return $output
+}
+
+function Get-GitOutput([string[]]$Arguments) {
+    try { return ((Invoke-Git $Arguments) | Out-String).Trim() } catch { return $null }
+}
+
+function Show-ProjectVersion {
+    Write-Step 'CodexToClaude project version'
+    $root = Get-RepoRoot
+    if (-not (Test-Path (Join-Path $root '.git'))) { throw "Not a git repository: $root" }
+    $branch = Get-GitOutput @('rev-parse', '--abbrev-ref', 'HEAD')
+    $sha = Get-GitOutput @('rev-parse', '--short', 'HEAD')
+    $status = Get-GitOutput @('status', '--porcelain')
+    $dirty = -not [string]::IsNullOrWhiteSpace($status)
+    $upstream = Get-GitOutput @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+    Write-Info "Repository: $root"
+    Write-Info "Branch: $branch"
+    Write-Info "Commit: $sha"
+    if ($upstream) { Write-Info "Upstream: $upstream" } else { Write-Warn 'No upstream branch configured.' }
+    if ($dirty) { Write-Warn 'Working tree: dirty' } else { Write-OK 'Working tree: clean' }
+}
+
+function Update-Project {
+    Write-Step 'Updating CodexToClaude project'
+    $status = Get-GitOutput @('status', '--porcelain')
+    if (-not [string]::IsNullOrWhiteSpace($status)) {
+        throw 'Working tree is not clean. Commit or remove local changes before project-update.'
+    }
+    $upstream = Get-GitOutput @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+    if (-not $upstream) { throw 'No upstream branch configured. Set an upstream before project-update.' }
+    $before = Get-GitOutput @('rev-parse', '--short', 'HEAD')
+    Invoke-Git @('fetch') | Out-Null
+    Invoke-Git @('pull', '--ff-only') | ForEach-Object { if ($_ -and $_.ToString().Trim()) { Write-Info $_ } }
+    $after = Get-GitOutput @('rev-parse', '--short', 'HEAD')
+    if ($before -eq $after) { Write-OK "Already up to date: $after" } else { Write-OK "Updated: $before -> $after" }
+}
+
+function Get-CLIProxyLocalVersion {
+    if (-not (Test-Path $ExePath)) { return 'missing' }
+    $info = (Get-Item $ExePath).VersionInfo
+    if ($info.ProductVersion) { return $info.ProductVersion }
+    if ($info.FileVersion) { return $info.FileVersion }
+    return 'installed'
+}
+
+function Show-CLIProxyVersion {
+    Write-Step 'CLIProxyAPI version'
+    Write-Info "Executable: $ExePath"
+    Write-Info "Local: $(Get-CLIProxyLocalVersion)"
+    try {
+        $latest = Get-CLIProxyLatestRelease
+        Write-Info "Latest: $($latest.release.tag_name)"
+        Write-Info "Asset: $($latest.asset.name)"
+    } catch {
+        Write-Warn "Unable to read latest release: $($_.Exception.Message)"
+    }
+}
+
+function Update-CLIProxyApi {
+    Write-Step 'Updating CLIProxyAPI latest release'
+    Ensure-InstallDir
+    $resolvedPort = $null
+    $wasRunning = $false
+    try {
+        $resolvedPort = Resolve-Port $false
+        $wasRunning = ((Get-PortProcesses $resolvedPort).Count -gt 0)
+        if ($wasRunning) { Stop-CLIProxyApi $resolvedPort }
+    } catch {
+        Write-Warn "Could not determine or stop running service: $($_.Exception.Message)"
+    }
+
+    $latest = Get-CLIProxyLatestRelease
+    $staged = Join-Path $InstallDir 'cli-proxy-api.new.exe'
+    if (Test-Path $staged) { Remove-Item $staged -Force }
+    Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $staged
+    if (-not (Test-Path $staged)) { throw 'Downloaded CLIProxyAPI executable was not created.' }
+    $backup = $null
+    if (Test-Path $ExePath) {
+        $backup = Join-Path $InstallDir "cli-proxy-api.backup-$(Get-Date -Format 'yyyyMMddHHmmss').exe"
+        Copy-Item -Force $ExePath $backup
+        Write-Info "Backup: $backup"
+    }
+    Move-Item -Force $staged $ExePath
+    Write-OK "Updated CLIProxyAPI to latest release: $($latest.release.tag_name)"
+    if ($wasRunning -and $null -ne $resolvedPort) {
+        try {
+            Start-CLIProxyApi $resolvedPort
+        } catch {
+            if ($backup -and (Test-Path $backup)) {
+                Copy-Item -Force $backup $ExePath
+                Write-Warn 'Restored previous cli-proxy-api.exe after restart failure.'
+            }
+            throw
+        }
+    }
+}
+
+function Get-ClaudeSettings {
+    if (Test-Path $ClaudeSettingsPath) { return (Get-Content $ClaudeSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json) }
+    return (New-Object PSObject)
+}
+
+function Ensure-ClaudeEnv([object]$Settings) {
+    if (-not $Settings.PSObject.Properties['env'] -or $null -eq $Settings.env) {
+        Set-JsonProperty $Settings 'env' (New-Object PSObject)
+    }
+}
+
+function Set-ClaudeModelEnv([object]$Settings) {
+    Ensure-ClaudeEnv $Settings
+    Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL' $OpusModel
+    Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL' $SonnetModel
+    Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
+    Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' ($OpusModel -replace '\(.*\)$', '')
+    Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
+    Remove-JsonProperty $Settings.env 'ANTHROPIC_MODEL'
+}
+
+function Show-ClaudeModels {
+    Write-Step 'Claude model settings'
+    $settings = Get-ClaudeSettings
+    Ensure-ClaudeEnv $settings
+    $opus = $settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+    $sonnet = $settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL
+    $haiku = $settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
+    if (-not $opus) { $opus = $OpusModel }
+    if (-not $sonnet) { $sonnet = $SonnetModel }
+    if (-not $haiku) { $haiku = $HaikuModel }
+    Write-Info "Opus: $opus"
+    Write-Info "Sonnet: $sonnet"
+    Write-Info "Haiku: $haiku"
+}
+
+function Configure-ClaudeModels {
+    Write-Step 'Configuring Claude model settings'
+    $claudeDir = Split-Path -Parent $ClaudeSettingsPath
+    if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Force $claudeDir | Out-Null }
+    $settings = Get-ClaudeSettings
+    Set-ClaudeModelEnv $settings
+    $outJson = $settings | ConvertTo-Json -Depth 20
+    Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
+    Write-OK "Updated model settings: $ClaudeSettingsPath"
+}
+
 switch ($Command) {
     'help' { Show-Help }
     'install' {
@@ -575,4 +743,10 @@ switch ($Command) {
         Show-Status $resolvedPort
         Verify-Setup $resolvedPort
     }
+    'project-version' { Show-ProjectVersion }
+    'project-update' { Update-Project }
+    'cliproxy-version' { Show-CLIProxyVersion }
+    'cliproxy-update' { Update-CLIProxyApi }
+    'models' { Show-ClaudeModels }
+    'configure-models' { Configure-ClaudeModels }
 }

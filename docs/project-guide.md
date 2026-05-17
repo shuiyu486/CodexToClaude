@@ -47,6 +47,9 @@ CodexToClaude/
 - `auth-status`：只检查 Codex OAuth auth 状态。
 - `verify`：验证 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
 - `doctor`：执行 status + verify。
+- `project-version` / `project-update`：显示项目 git 状态，并在工作区干净时安全快进更新。
+- `cliproxy-version` / `cliproxy-update`：显示 CLIProxyAPI 本地/上游版本，并停服替换到 latest release。
+- `models` / `configure-models`：查看或更新 Claude Code 使用的 Opus/Sonnet/Haiku 模型。
 
 ## GUI 职责
 
@@ -70,6 +73,17 @@ GUI 使用单文件数据驱动结构，仍不引入 Node/.NET 打包链路。
 - 快速开始向导只映射 `Install -> Login -> Configure -> Restart -> Verify`，每步仍调用 CLI 子命令。
 - 高级/诊断操作与首次向导分区展示，避免再次退化为按钮墙。
 - 调整向导顺序或文案时，同步 README 的用户步骤、本文档的维护约定和 `CLAUDE.local.md` 的速记规则。
+- 版本管理、CLIProxyAPI 更新和模型配置按钮只能调用 CLI 子命令，不在 GUI 中实现 git、下载、替换 exe 或写 settings 逻辑。
+
+## 上游依赖与版本管理
+
+CodexToClaude 基于 CLIProxyAPI 构建；CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换，CodexToClaude 负责 Windows 友好的安装、配置、启停、诊断、更新和 GUI 编排。
+
+- 项目更新使用 `project-update`，只允许在 git 工作区干净时执行 `git fetch` + `git pull --ff-only`，避免覆盖用户未提交改动。
+- CLIProxyAPI 更新使用 `cliproxy-update`，流程是 stop -> 下载 latest release -> 备份旧 exe -> 替换 -> 如原本运行则 start。
+- CLIProxyAPI 自动下载仍只选择 GitHub release 中 Windows x64 / amd64 的 zip 或 exe asset。
+- 更新 CLIProxyAPI 后必须保留 `-config` 和 `WorkingDirectory=~/.cli-proxy-api` 启动契约。
+- 修改版本管理逻辑后，除脚本测试外，涉及真实服务管理时仍需跑 `restart` 和 `verify`。
 
 ## 配置写入规则
 
@@ -181,7 +195,7 @@ GUI 修改后至少验证：
 
 ### 改模型默认值
 
-修改 `scripts/CodexToClaude.ps1` param 默认值，并同步 README 示例。
+修改 `scripts/CodexToClaude.ps1` param 默认值，并同步 GUI 默认偏好、README 示例和手动安装文档。GUI 保存模型时应调用 `configure-models`，不要直接写 `settings.json`。
 
 ### 改 GUI 字段
 
@@ -190,6 +204,10 @@ GUI 修改后至少验证：
 ### 改登录诊断
 
 优先改 `Get-AuthStatus` 和 `Write-AuthStatus`，GUI 通过 `auth-status -Json` 复用。
+
+### 改版本更新逻辑
+
+项目自更新必须保持 dirty 工作区阻断和 `pull --ff-only`；CLIProxyAPI 更新必须先停服、备份旧 exe、替换后恢复启动。不要让 GUI 绕过这些 CLI 约束。
 
 ### 改启动逻辑
 

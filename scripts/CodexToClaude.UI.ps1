@@ -55,6 +55,8 @@ $I18N = @{
         'wizard.finishLog' = 'Quick start completed. Future launches will remember this.'
         'main.title' = 'Main flow'
         'advanced.title' = 'Advanced and diagnostics'
+        'version.title' = 'Version management'
+        'models.title' = 'Claude models'
         'log.title' = 'Log'
         'btn.install' = 'Install'
         'btn.login' = 'Login'
@@ -68,6 +70,15 @@ $I18N = @{
         'btn.refresh' = 'Refresh Login Status'
         'btn.openInstall' = 'Open Install Dir'
         'btn.openSettings' = 'Open Settings Dir'
+        'btn.projectVersion' = 'Project Version'
+        'btn.projectUpdate' = 'Update Project'
+        'btn.proxyVersion' = 'CLIProxyAPI Version'
+        'btn.proxyUpdate' = 'Update CLIProxyAPI'
+        'btn.models' = 'Read Models'
+        'btn.configureModels' = 'Save Models'
+        'field.opusModel' = 'Opus model'
+        'field.sonnetModel' = 'Sonnet model'
+        'field.haikuModel' = 'Haiku model'
         'dialog.invalidPortTitle' = 'Invalid Port'
         'dialog.invalidPortNumber' = 'Port must be a number, for example 8317.'
         'dialog.invalidPortRange' = 'Port must be in range 1-65535.'
@@ -119,6 +130,8 @@ $I18N = @{
         'wizard.finishLog' = '快速开始已完成，后续启动会记住此状态。'
         'main.title' = '主流程'
         'advanced.title' = '高级与诊断'
+        'version.title' = '版本管理'
+        'models.title' = 'Claude 模型'
         'log.title' = '日志'
         'btn.install' = '安装'
         'btn.login' = '登录'
@@ -132,6 +145,15 @@ $I18N = @{
         'btn.refresh' = '刷新登录状态'
         'btn.openInstall' = '打开安装目录'
         'btn.openSettings' = '打开配置目录'
+        'btn.projectVersion' = '项目版本'
+        'btn.projectUpdate' = '更新项目'
+        'btn.proxyVersion' = 'CLIProxyAPI 版本'
+        'btn.proxyUpdate' = '更新 CLIProxyAPI'
+        'btn.models' = '读取模型'
+        'btn.configureModels' = '保存模型'
+        'field.opusModel' = 'Opus 模型'
+        'field.sonnetModel' = 'Sonnet 模型'
+        'field.haikuModel' = 'Haiku 模型'
         'dialog.invalidPortTitle' = '端口无效'
         'dialog.invalidPortNumber' = '端口必须是数字，例如 8317。'
         'dialog.invalidPortRange' = '端口范围必须是 1-65535。'
@@ -174,6 +196,9 @@ function New-DefaultPreferences {
             apiKey = 'sk-cliproxy-local-dev-2026'
             installDir = $DefaultInstallDir
             claudeSettingsPath = $DefaultSettingsPath
+            opusModel = 'gpt-5.5(xhigh)'
+            sonnetModel = 'gpt-5.3-codex(high)'
+            haikuModel = 'gpt-5.3-codex-spark(medium)'
             useDeviceLogin = $false
             skipStreamCheck = $false
         }
@@ -202,6 +227,9 @@ function Load-UiPreferences {
         $defaults.lastValues.apiKey = [string](Get-ObjectProperty $last 'apiKey' $defaults.lastValues.apiKey)
         $defaults.lastValues.installDir = [string](Get-ObjectProperty $last 'installDir' $defaults.lastValues.installDir)
         $defaults.lastValues.claudeSettingsPath = [string](Get-ObjectProperty $last 'claudeSettingsPath' $defaults.lastValues.claudeSettingsPath)
+        $defaults.lastValues.opusModel = [string](Get-ObjectProperty $last 'opusModel' $defaults.lastValues.opusModel)
+        $defaults.lastValues.sonnetModel = [string](Get-ObjectProperty $last 'sonnetModel' $defaults.lastValues.sonnetModel)
+        $defaults.lastValues.haikuModel = [string](Get-ObjectProperty $last 'haikuModel' $defaults.lastValues.haikuModel)
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
         return $defaults
@@ -220,6 +248,9 @@ function Save-UiPreferences {
     $script:Prefs.lastValues.apiKey = $apiKeyBox.Text.Trim()
     $script:Prefs.lastValues.installDir = $installDirBox.Text.Trim()
     $script:Prefs.lastValues.claudeSettingsPath = $settingsPathBox.Text.Trim()
+    $script:Prefs.lastValues.opusModel = $opusModelBox.Text.Trim()
+    $script:Prefs.lastValues.sonnetModel = $sonnetModelBox.Text.Trim()
+    $script:Prefs.lastValues.haikuModel = $haikuModelBox.Text.Trim()
     $script:Prefs.lastValues.useDeviceLogin = [bool]$deviceCheck.Checked
     $script:Prefs.lastValues.skipStreamCheck = [bool]$skipStreamCheck.Checked
     $json = $script:Prefs | ConvertTo-Json -Depth 6
@@ -328,6 +359,9 @@ function Build-Args([string]$Command, [bool]$NeedPortProxy) {
     if ($apiKeyBox.Text.Trim() -ne '') { $args += @('-ApiKey', $apiKeyBox.Text.Trim()) }
     if ($installDirBox.Text.Trim() -ne '') { $args += @('-InstallDir', $installDirBox.Text.Trim()) }
     if ($settingsPathBox.Text.Trim() -ne '') { $args += @('-ClaudeSettingsPath', $settingsPathBox.Text.Trim()) }
+    if ($opusModelBox.Text.Trim() -ne '') { $args += @('-OpusModel', $opusModelBox.Text.Trim()) }
+    if ($sonnetModelBox.Text.Trim() -ne '') { $args += @('-SonnetModel', $sonnetModelBox.Text.Trim()) }
+    if ($haikuModelBox.Text.Trim() -ne '') { $args += @('-HaikuModel', $haikuModelBox.Text.Trim()) }
     if ($deviceCheck.Checked -and $Command -eq 'login') { $args += '-Device' }
     if ($skipStreamCheck.Checked) { $args += '-SkipClaudeStreamCheck' }
     return $args
@@ -436,8 +470,9 @@ $script:WizardCompleted = [bool]$script:Prefs.firstRunCompleted
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = T 'app.title'
-$form.Size = New-Object System.Drawing.Size(980, 760)
+$form.Size = New-Object System.Drawing.Size(980, 930)
 $form.StartPosition = 'CenterScreen'
+$form.SuspendLayout()
 
 $title = New-Label (T 'app.title') 16 14 220 26
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
@@ -466,6 +501,7 @@ $settingsGroup = New-Object System.Windows.Forms.GroupBox
 $settingsGroup.Text = T 'settings.title'
 $settingsGroup.Location = New-Object System.Drawing.Point(16, 80)
 $settingsGroup.Size = New-Object System.Drawing.Size(930, 205)
+$settingsGroup.SuspendLayout()
 Register-Text $settingsGroup 'settings.title'
 $form.Controls.Add($settingsGroup)
 
@@ -521,6 +557,7 @@ $settingsGroup.Controls.Add($skipStreamCheck)
 $wizardGroup = New-Object System.Windows.Forms.GroupBox
 $wizardGroup.Location = New-Object System.Drawing.Point(16, 300)
 $wizardGroup.Size = New-Object System.Drawing.Size(455, 215)
+$wizardGroup.SuspendLayout()
 Register-Text $wizardGroup 'wizard.title'
 $form.Controls.Add($wizardGroup)
 
@@ -548,6 +585,7 @@ $mainGroup = New-Object System.Windows.Forms.GroupBox
 $mainGroup.Text = T 'main.title'
 $mainGroup.Location = New-Object System.Drawing.Point(490, 300)
 $mainGroup.Size = New-Object System.Drawing.Size(455, 100)
+$mainGroup.SuspendLayout()
 Register-Text $mainGroup 'main.title'
 $form.Controls.Add($mainGroup)
 
@@ -571,6 +609,7 @@ $advancedGroup = New-Object System.Windows.Forms.GroupBox
 $advancedGroup.Text = T 'advanced.title'
 $advancedGroup.Location = New-Object System.Drawing.Point(490, 415)
 $advancedGroup.Size = New-Object System.Drawing.Size(455, 100)
+$advancedGroup.SuspendLayout()
 Register-Text $advancedGroup 'advanced.title'
 $form.Controls.Add($advancedGroup)
 
@@ -604,16 +643,78 @@ Register-Text $openSettingsBtn 'btn.openSettings'
 $openSettingsBtn.Add_Click({ $dir = Split-Path -Parent $settingsPathBox.Text.Trim(); if (Test-Path $dir) { Start-Process $dir } })
 $advancedGroup.Controls.Add($openSettingsBtn)
 
+$versionGroup = New-Object System.Windows.Forms.GroupBox
+$versionGroup.Text = T 'version.title'
+$versionGroup.Location = New-Object System.Drawing.Point(16, 530)
+$versionGroup.Size = New-Object System.Drawing.Size(455, 90)
+$versionGroup.SuspendLayout()
+Register-Text $versionGroup 'version.title'
+$form.Controls.Add($versionGroup)
+
+$projectVersionBtn = New-Button (T 'btn.projectVersion') 16 34 100
+Register-Text $projectVersionBtn 'btn.projectVersion'
+$projectVersionBtn.Add_Click({ Run-Command 'project-version' $false | Out-Null })
+$versionGroup.Controls.Add($projectVersionBtn)
+
+$projectUpdateBtn = New-Button (T 'btn.projectUpdate') 126 34 95
+Register-Text $projectUpdateBtn 'btn.projectUpdate'
+$projectUpdateBtn.Add_Click({ Run-Command 'project-update' $false | Out-Null })
+$versionGroup.Controls.Add($projectUpdateBtn)
+
+$proxyVersionBtn = New-Button (T 'btn.proxyVersion') 231 34 110
+Register-Text $proxyVersionBtn 'btn.proxyVersion'
+$proxyVersionBtn.Add_Click({ Run-Command 'cliproxy-version' $false | Out-Null })
+$versionGroup.Controls.Add($proxyVersionBtn)
+
+$proxyUpdateBtn = New-Button (T 'btn.proxyUpdate') 351 34 90
+Register-Text $proxyUpdateBtn 'btn.proxyUpdate'
+$proxyUpdateBtn.Add_Click({ Run-Command 'cliproxy-update' $false | Out-Null })
+$versionGroup.Controls.Add($proxyUpdateBtn)
+
+$modelsGroup = New-Object System.Windows.Forms.GroupBox
+$modelsGroup.Text = T 'models.title'
+$modelsGroup.Location = New-Object System.Drawing.Point(490, 530)
+$modelsGroup.Size = New-Object System.Drawing.Size(455, 170)
+$modelsGroup.SuspendLayout()
+Register-Text $modelsGroup 'models.title'
+$form.Controls.Add($modelsGroup)
+
+$modelsGroup.Controls.Add((New-Label (T 'field.opusModel') 14 30 90 22))
+Register-Text $modelsGroup.Controls[$modelsGroup.Controls.Count - 1] 'field.opusModel'
+$opusModelBox = New-TextBox $script:Prefs.lastValues.opusModel 110 26 220
+$modelsGroup.Controls.Add($opusModelBox)
+
+$modelsGroup.Controls.Add((New-Label (T 'field.sonnetModel') 14 64 90 22))
+Register-Text $modelsGroup.Controls[$modelsGroup.Controls.Count - 1] 'field.sonnetModel'
+$sonnetModelBox = New-TextBox $script:Prefs.lastValues.sonnetModel 110 60 220
+$modelsGroup.Controls.Add($sonnetModelBox)
+
+$modelsGroup.Controls.Add((New-Label (T 'field.haikuModel') 14 98 90 22))
+Register-Text $modelsGroup.Controls[$modelsGroup.Controls.Count - 1] 'field.haikuModel'
+$haikuModelBox = New-TextBox $script:Prefs.lastValues.haikuModel 110 94 220
+$modelsGroup.Controls.Add($haikuModelBox)
+
+$readModelsBtn = New-Button (T 'btn.models') 345 43 90
+Register-Text $readModelsBtn 'btn.models'
+$readModelsBtn.Add_Click({ Run-Command 'models' $false | Out-Null })
+$modelsGroup.Controls.Add($readModelsBtn)
+
+$saveModelsBtn = New-Button (T 'btn.configureModels') 345 85 90
+Register-Text $saveModelsBtn 'btn.configureModels'
+$saveModelsBtn.Add_Click({ Run-Command 'configure-models' $false | Out-Null })
+$modelsGroup.Controls.Add($saveModelsBtn)
+
 $logGroup = New-Object System.Windows.Forms.GroupBox
 $logGroup.Text = T 'log.title'
-$logGroup.Location = New-Object System.Drawing.Point(16, 530)
-$logGroup.Size = New-Object System.Drawing.Size(930, 175)
+$logGroup.Location = New-Object System.Drawing.Point(16, 715)
+$logGroup.Size = New-Object System.Drawing.Size(930, 165)
+$logGroup.SuspendLayout()
 Register-Text $logGroup 'log.title'
 $form.Controls.Add($logGroup)
 
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Location = New-Object System.Drawing.Point(12, 24)
-$logBox.Size = New-Object System.Drawing.Size(905, 138)
+$logBox.Size = New-Object System.Drawing.Size(905, 128)
 $logBox.Multiline = $true
 $logBox.ScrollBars = 'Vertical'
 $logBox.ReadOnly = $true
@@ -631,9 +732,21 @@ $languageBox.Add_SelectedIndexChanged({
 
 $form.Add_FormClosing({ Save-UiPreferences })
 $form.Add_Shown({
-    Apply-Language
-    Refresh-AuthStatus
-    if ($script:Prefs.settingsLoadFailed) { Append-Log (T 'log.settingsFallback') }
+    $form.BeginInvoke([Action]{
+        Refresh-AuthStatus
+        if ($script:Prefs.settingsLoadFailed) { Append-Log (T 'log.settingsFallback') }
+    }) | Out-Null
 })
+
+Apply-Language
+$settingsGroup.ResumeLayout($false)
+$wizardGroup.ResumeLayout($false)
+$mainGroup.ResumeLayout($false)
+$advancedGroup.ResumeLayout($false)
+$versionGroup.ResumeLayout($false)
+$modelsGroup.ResumeLayout($false)
+$logGroup.ResumeLayout($false)
+$form.ResumeLayout($false)
+$form.PerformLayout()
 
 [void]$form.ShowDialog()

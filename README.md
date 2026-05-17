@@ -54,6 +54,10 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 
 `Main flow` / `主流程` 保留常用步骤按钮；`Advanced and diagnostics` / `高级与诊断` 提供 `Start`、`Stop`、`Status`、`Doctor`、刷新登录状态和打开目录等操作。GUI 会显示当前登录状态，并在登录失败时给出排障建议。
 
+`Version management` / `版本管理` 可检查或更新 CodexToClaude 项目和 CLIProxyAPI。项目更新只会在 git 工作区干净时执行；CLIProxyAPI 更新会先停止本地服务、替换 exe，再尝试恢复启动。
+
+`Claude models` / `Claude 模型` 可修改 Claude Code 使用的 Opus、Sonnet、Haiku 模型名。保存后建议执行 `Restart` 和 `Verify`。
+
 ## CLI 用法
 
 ```powershell
@@ -83,6 +87,17 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 .\scripts\CodexToClaude.ps1 status
 .\scripts\CodexToClaude.ps1 auth-status
 .\scripts\CodexToClaude.ps1 doctor
+```
+
+版本和模型：
+
+```powershell
+.\scripts\CodexToClaude.ps1 project-version
+.\scripts\CodexToClaude.ps1 project-update
+.\scripts\CodexToClaude.ps1 cliproxy-version
+.\scripts\CodexToClaude.ps1 cliproxy-update
+.\scripts\CodexToClaude.ps1 models
+.\scripts\CodexToClaude.ps1 configure-models -OpusModel "gpt-5.5(xhigh)" -SonnetModel "gpt-5.3-codex(high)" -HaikuModel "gpt-5.3-codex-spark(medium)"
 ```
 
 ## Login 状态说明
@@ -131,6 +146,12 @@ payload:
 ```
 
 原因是 Claude Code TUI 在显示 Codex thinking 流时，中文片段可能出现重复字符。过滤 reasoning 后，正常回答文本不受影响。
+
+## 参考项目
+
+CodexToClaude 基于 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 构建。CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换；CodexToClaude 提供 Windows 友好的安装、配置、启动、诊断、更新和 GUI 编排。
+
+CLIProxyAPI 手动更新方式：打开 [CLIProxyAPI releases](https://github.com/router-for-me/CLIProxyAPI/releases)，下载 Windows x64 / amd64 版本，停止本地服务后把 `cli-proxy-api.exe` 替换到 `~/.cli-proxy-api/cli-proxy-api.exe`，再运行 `restart` 和 `verify`。
 
 ## 安全说明
 

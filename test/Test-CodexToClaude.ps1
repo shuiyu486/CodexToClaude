@@ -75,6 +75,23 @@ TestCase 'ProxyUrl writes explicit proxy-url line' {
     }
 }
 
+TestCase 'Configure models writes Claude model env values' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-models"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure-models -ClaudeSettingsPath $settingsPath -OpusModel 'gpt-opus-test(high)' -SonnetModel 'gpt-sonnet-test(medium)' -HaikuModel 'gpt-haiku-test(low)' 2>&1 | Out-Null
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-opus-test(high)') { throw 'Opus model mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-sonnet-test(medium)') { throw 'Sonnet model mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-haiku-test(low)') { throw 'Haiku model mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-opus-test') { throw 'Opus model name mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-sonnet-test') { throw 'Sonnet model name mismatch.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 TestCase 'Auth status JSON does not expose tokens' {
     $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-auth"
     $installDir = Join-Path $fakeHome '.cli-proxy-api'

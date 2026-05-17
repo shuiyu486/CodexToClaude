@@ -27,6 +27,24 @@
 .\scripts\CodexToClaude.ps1 login -Device
 ```
 
+## 版本和模型检查
+
+首次配置完成后可检查版本与模型：
+
+```powershell
+.\scripts\CodexToClaude.ps1 project-version
+.\scripts\CodexToClaude.ps1 cliproxy-version
+.\scripts\CodexToClaude.ps1 models
+```
+
+如果需要更新 CLIProxyAPI，优先使用 `cliproxy-update`；它会停服、替换 exe，并在原服务运行时尝试恢复启动。项目自更新使用 `project-update`，但只会在 git 工作区干净时执行。
+
+如需指定模型：
+
+```powershell
+.\scripts\CodexToClaude.ps1 configure-models -OpusModel "<OPUS_MODEL>" -SonnetModel "<SONNET_MODEL>" -HaikuModel "<HAIKU_MODEL>"
+```
+
 ## 验收标准
 
 - `cli-proxy-api.exe` 正在监听用户指定端口。
