@@ -47,7 +47,7 @@ CodexToClaude/
 - `auth-status`：只检查 Codex OAuth auth 状态。
 - `verify`：验证 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
 - `doctor`：执行 status + verify。
-- `project-version` / `project-update`：显示项目 git 状态，并在工作区干净时安全快进更新。
+- `project-version` / `project-update`：显示 `VERSION` 项目版本和 git 状态，并在工作区干净时安全快进更新。
 - `cliproxy-version` / `cliproxy-update`：显示 CLIProxyAPI 本地/上游版本，并停服替换到 latest release。
 - `models` / `configure-models`：查看或更新 Claude Code 使用的 Opus/Sonnet/Haiku 模型。
 
@@ -73,9 +73,11 @@ GUI 使用单文件数据驱动结构，仍不引入 Node/.NET 打包链路。
 - 快速开始向导只映射 `Install -> Login -> Configure -> Restart -> Verify`，每步仍调用 CLI 子命令。
 - 高级/诊断操作与首次向导分区展示，避免再次退化为按钮墙。
 - 调整向导顺序或文案时，同步 README 的用户步骤、本文档的维护约定和 `CLAUDE.local.md` 的速记规则。
-- 版本管理、CLIProxyAPI 更新和模型配置按钮只能调用 CLI 子命令，不在 GUI 中实现 git、下载、替换 exe 或写 settings 逻辑。
+- 版本管理和 CLIProxyAPI 更新放在高级管理窗口，模型配置放在主界面；按钮只能调用 CLI 子命令，不在 GUI 中实现 git、下载、替换 exe 或写 settings 逻辑。
 
 ## 上游依赖与版本管理
+
+项目版本号由仓库根目录 `VERSION` 文件维护，格式为 `v<major>.<minor>.<patch>.<build>`，例如 `v1.0.0.1`。`project-version` 和 GUI 标题/高级管理窗口应读取同一个版本源。
 
 CodexToClaude 基于 CLIProxyAPI 构建；CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换，CodexToClaude 负责 Windows 友好的安装、配置、启停、诊断、更新和 GUI 编排。
 

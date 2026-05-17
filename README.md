@@ -52,11 +52,11 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 4. 如果普通登录不方便，勾选 `Use device login` / `使用设备码登录` 后再执行 `Login`。
 5. 确认顶部 `Login status` / `登录状态` 显示已登录。
 
-`Main flow` / `主流程` 保留常用步骤按钮；`Advanced and diagnostics` / `高级与诊断` 提供 `Start`、`Stop`、`Status`、`Doctor`、刷新登录状态和打开目录等操作。GUI 会显示当前登录状态，并在登录失败时给出排障建议。
+`Main flow` / `主流程` 保留常用步骤按钮；`Claude models` / `Claude 模型` 直接放在主界面，可修改 Claude Code 使用的 Opus、Sonnet、Haiku 模型名。保存后建议执行 `Restart` 和 `Verify`。
 
-`Version management` / `版本管理` 可检查或更新 CodexToClaude 项目和 CLIProxyAPI。项目更新只会在 git 工作区干净时执行；CLIProxyAPI 更新会先停止本地服务、替换 exe，再尝试恢复启动。
+`Advanced Management` / `高级管理` 独立窗口用于检查或更新 CodexToClaude 项目和 CLIProxyAPI。项目版本来自仓库根目录 `VERSION`；项目更新只会在 git 工作区干净时执行；CLIProxyAPI 更新会先停止本地服务、替换 exe，再尝试恢复启动。
 
-`Claude models` / `Claude 模型` 可修改 Claude Code 使用的 Opus、Sonnet、Haiku 模型名。保存后建议执行 `Restart` 和 `Verify`。
+`Diagnostics` / `诊断工具` 独立窗口提供 `Start`、`Stop`、`Status`、`Doctor`、刷新登录状态和打开目录等低频操作。GUI 会显示当前登录状态，并在登录失败时给出排障建议。
 
 ## CLI 用法
 
@@ -97,7 +97,7 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 .\scripts\CodexToClaude.ps1 cliproxy-version
 .\scripts\CodexToClaude.ps1 cliproxy-update
 .\scripts\CodexToClaude.ps1 models
-.\scripts\CodexToClaude.ps1 configure-models -OpusModel "gpt-5.5(xhigh)" -SonnetModel "gpt-5.3-codex(high)" -HaikuModel "gpt-5.3-codex-spark(medium)"
+.\scripts\CodexToClaude.ps1 configure-models -OpusModel "gpt-5.5" -SonnetModel "gpt-5.4" -HaikuModel "gpt-5.4"
 ```
 
 ## Login 状态说明

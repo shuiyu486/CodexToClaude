@@ -1,10 +1,11 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Script = Join-Path $RepoRoot 'scripts\CodexToClaude.ps1'
 $UiScript = Join-Path $RepoRoot 'scripts\CodexToClaude.UI.ps1'
 $GuiLauncher = Join-Path $RepoRoot 'CodexToClaude-GUI.cmd'
+$VersionFile = Join-Path $RepoRoot 'VERSION'
 $Passed = 0
 $Failed = 0
 
@@ -41,6 +42,14 @@ TestCase 'GUI launcher exists' {
     if ($content -notmatch 'CodexToClaude.UI.ps1') { throw 'GUI launcher does not start UI script.' }
 }
 
+
+TestCase 'Project VERSION file exists and is semantic' {
+    if (-not (Test-Path $VersionFile)) { throw 'VERSION file missing.' }
+    $version = (Get-Content $VersionFile -Raw -Encoding UTF8).Trim()
+    if ($version -notmatch '^v\d+\.\d+\.\d+\.\d+$') { throw "VERSION format mismatch: $version" }
+    & $Script project-version
+}
+
 TestCase 'Help command runs and explains Port ProxyUrl' {
     & $Script help
 }
@@ -56,6 +65,11 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($config -match '(?m)^proxy-url:') { throw 'proxy-url should be omitted for none.' }
         $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18317') { throw 'Claude base URL mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-5.5') { throw 'Default Opus model name mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-5.4') { throw 'Default Sonnet model name mismatch.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

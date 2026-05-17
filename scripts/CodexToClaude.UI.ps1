@@ -8,6 +8,8 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $ScriptPath = Join-Path $PSScriptRoot 'CodexToClaude.ps1'
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$VersionPath = Join-Path $RepoRoot 'VERSION'
 $DefaultInstallDir = Join-Path $env:USERPROFILE '.cli-proxy-api'
 $DefaultSettingsPath = Join-Path $env:USERPROFILE '.claude\settings.json'
 $PrefsDir = Join-Path $env:USERPROFILE '.codextoclaude'
@@ -76,6 +78,8 @@ $I18N = @{
         'btn.proxyUpdate' = 'Update CLIProxyAPI'
         'btn.models' = 'Read Models'
         'btn.configureModels' = 'Save Models'
+        'btn.advancedManagement' = 'Advanced Management'
+        'btn.diagnostics' = 'Diagnostics'
         'field.opusModel' = 'Opus model'
         'field.sonnetModel' = 'Sonnet model'
         'field.haikuModel' = 'Haiku model'
@@ -151,6 +155,8 @@ $I18N = @{
         'btn.proxyUpdate' = '更新 CLIProxyAPI'
         'btn.models' = '读取模型'
         'btn.configureModels' = '保存模型'
+        'btn.advancedManagement' = '高级管理'
+        'btn.diagnostics' = '诊断工具'
         'field.opusModel' = 'Opus 模型'
         'field.sonnetModel' = 'Sonnet 模型'
         'field.haikuModel' = 'Haiku 模型'
@@ -185,6 +191,13 @@ function Get-DefaultLanguage {
     return 'en-US'
 }
 
+function Get-ProjectVersion {
+    if (-not (Test-Path $VersionPath)) { return 'v0.0.0.0' }
+    $version = (Get-Content $VersionPath -Raw -Encoding UTF8).Trim()
+    if ($version -notmatch '^v\d+\.\d+\.\d+\.\d+$') { return 'v0.0.0.0' }
+    return $version
+}
+
 function New-DefaultPreferences {
     return @{
         schemaVersion = 1
@@ -193,12 +206,12 @@ function New-DefaultPreferences {
         lastValues = @{
             port = '8317'
             proxyUrl = 'http://127.0.0.1:7897'
-            apiKey = 'sk-cliproxy-local-dev-2026'
+            apiKey = ''
             installDir = $DefaultInstallDir
             claudeSettingsPath = $DefaultSettingsPath
-            opusModel = 'gpt-5.5(xhigh)'
-            sonnetModel = 'gpt-5.3-codex(high)'
-            haikuModel = 'gpt-5.3-codex-spark(medium)'
+            opusModel = 'gpt-5.5'
+            sonnetModel = 'gpt-5.4'
+            haikuModel = 'gpt-5.4'
             useDeviceLogin = $false
             skipStreamCheck = $false
         }
@@ -224,7 +237,6 @@ function Load-UiPreferences {
         $defaults.firstRunCompleted = [bool](Get-ObjectProperty $loaded 'firstRunCompleted' $defaults.firstRunCompleted)
         $defaults.lastValues.port = [string](Get-ObjectProperty $last 'port' $defaults.lastValues.port)
         $defaults.lastValues.proxyUrl = [string](Get-ObjectProperty $last 'proxyUrl' $defaults.lastValues.proxyUrl)
-        $defaults.lastValues.apiKey = [string](Get-ObjectProperty $last 'apiKey' $defaults.lastValues.apiKey)
         $defaults.lastValues.installDir = [string](Get-ObjectProperty $last 'installDir' $defaults.lastValues.installDir)
         $defaults.lastValues.claudeSettingsPath = [string](Get-ObjectProperty $last 'claudeSettingsPath' $defaults.lastValues.claudeSettingsPath)
         $defaults.lastValues.opusModel = [string](Get-ObjectProperty $last 'opusModel' $defaults.lastValues.opusModel)
@@ -232,6 +244,8 @@ function Load-UiPreferences {
         $defaults.lastValues.haikuModel = [string](Get-ObjectProperty $last 'haikuModel' $defaults.lastValues.haikuModel)
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
+        if ($defaults.lastValues.installDir -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.installDir = $DefaultInstallDir }
+        if ($defaults.lastValues.claudeSettingsPath -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.claudeSettingsPath = $DefaultSettingsPath }
         return $defaults
     } catch {
         $defaults.settingsLoadFailed = $true
@@ -245,7 +259,7 @@ function Save-UiPreferences {
     $script:Prefs.firstRunCompleted = $script:WizardCompleted
     $script:Prefs.lastValues.port = $portBox.Text.Trim()
     $script:Prefs.lastValues.proxyUrl = $proxyBox.Text.Trim()
-    $script:Prefs.lastValues.apiKey = $apiKeyBox.Text.Trim()
+    $script:Prefs.lastValues.apiKey = ''
     $script:Prefs.lastValues.installDir = $installDirBox.Text.Trim()
     $script:Prefs.lastValues.claudeSettingsPath = $settingsPathBox.Text.Trim()
     $script:Prefs.lastValues.opusModel = $opusModelBox.Text.Trim()
@@ -275,7 +289,9 @@ function Apply-Language {
         foreach ($binding in $script:TextBindings) {
             $binding.Control.Text = T $binding.Key
         }
-        $form.Text = T 'app.title'
+        $versionTitle = "$(T 'app.title') $(Get-ProjectVersion)"
+        $form.Text = $versionTitle
+        $title.Text = $versionTitle
         $zhItem = T 'language.zh'
         $enItem = T 'language.en'
         $languageBox.Items.Clear()
@@ -314,7 +330,7 @@ function New-Button([string]$Text, [int]$X, [int]$Y, [int]$W) {
     $button = New-Object System.Windows.Forms.Button
     $button.Text = $Text
     $button.Location = New-Object System.Drawing.Point($X, $Y)
-    $button.Size = New-Object System.Drawing.Size($W, 30)
+    $button.Size = New-Object System.Drawing.Size($W, 34)
     return $button
 }
 
@@ -464,22 +480,95 @@ function Invoke-WizardStep([hashtable]$Step) {
     }
 }
 
+function Show-AdvancedManagementWindow {
+    $advancedForm = New-Object System.Windows.Forms.Form
+    $advancedForm.Text = T 'btn.advancedManagement'
+    $advancedForm.Size = New-Object System.Drawing.Size(520, 230)
+    $advancedForm.StartPosition = 'CenterParent'
+
+    $versionGroup = New-Object System.Windows.Forms.GroupBox
+    $versionGroup.Text = T 'version.title'
+    $versionGroup.Location = New-Object System.Drawing.Point(16, 16)
+    $versionGroup.Size = New-Object System.Drawing.Size(470, 145)
+    $advancedForm.Controls.Add($versionGroup)
+
+    $projectVersionBtn = New-Button (T 'btn.projectVersion') 18 34 200
+    $projectVersionBtn.Add_Click({ Run-Command 'project-version' $false | Out-Null })
+    $versionGroup.Controls.Add($projectVersionBtn)
+
+    $projectUpdateBtn = New-Button (T 'btn.projectUpdate') 238 34 200
+    $projectUpdateBtn.Add_Click({ Run-Command 'project-update' $false | Out-Null })
+    $versionGroup.Controls.Add($projectUpdateBtn)
+
+    $proxyVersionBtn = New-Button (T 'btn.proxyVersion') 18 84 200
+    $proxyVersionBtn.Add_Click({ Run-Command 'cliproxy-version' $false | Out-Null })
+    $versionGroup.Controls.Add($proxyVersionBtn)
+
+    $proxyUpdateBtn = New-Button (T 'btn.proxyUpdate') 238 84 200
+    $proxyUpdateBtn.Add_Click({ Run-Command 'cliproxy-update' $false | Out-Null })
+    $versionGroup.Controls.Add($proxyUpdateBtn)
+
+    [void]$advancedForm.ShowDialog($form)
+}
+
+function Show-DiagnosticsWindow {
+    $diagForm = New-Object System.Windows.Forms.Form
+    $diagForm.Text = T 'btn.diagnostics'
+    $diagForm.Size = New-Object System.Drawing.Size(560, 310)
+    $diagForm.StartPosition = 'CenterParent'
+
+    $diagGroup = New-Object System.Windows.Forms.GroupBox
+    $diagGroup.Text = T 'advanced.title'
+    $diagGroup.Location = New-Object System.Drawing.Point(16, 16)
+    $diagGroup.Size = New-Object System.Drawing.Size(510, 210)
+    $diagForm.Controls.Add($diagGroup)
+
+    $startBtn = New-Button (T 'btn.start') 18 34 105
+    $startBtn.Add_Click({ Run-Command 'start' $false | Out-Null })
+    $diagGroup.Controls.Add($startBtn)
+
+    $stopBtn = New-Button (T 'btn.stop') 138 34 105
+    $stopBtn.Add_Click({ Run-Command 'stop' $false | Out-Null })
+    $diagGroup.Controls.Add($stopBtn)
+
+    $statusBtn = New-Button (T 'btn.status') 258 34 105
+    $statusBtn.Add_Click({ Run-Command 'status' $false | Out-Null })
+    $diagGroup.Controls.Add($statusBtn)
+
+    $doctorBtn = New-Button (T 'btn.doctor') 378 34 105
+    $doctorBtn.Add_Click({ Run-Command 'doctor' $false | Out-Null })
+    $diagGroup.Controls.Add($doctorBtn)
+
+    $refreshBtn = New-Button (T 'btn.refresh') 18 88 225
+    $refreshBtn.Add_Click({ Refresh-AuthStatus })
+    $diagGroup.Controls.Add($refreshBtn)
+
+    $openInstallBtn = New-Button (T 'btn.openInstall') 258 88 225
+    $openInstallBtn.Add_Click({ if (Test-Path $installDirBox.Text.Trim()) { Start-Process $installDirBox.Text.Trim() } })
+    $diagGroup.Controls.Add($openInstallBtn)
+
+    $openSettingsBtn = New-Button (T 'btn.openSettings') 18 142 225
+    $openSettingsBtn.Add_Click({ $dir = Split-Path -Parent $settingsPathBox.Text.Trim(); if (Test-Path $dir) { Start-Process $dir } })
+    $diagGroup.Controls.Add($openSettingsBtn)
+
+    [void]$diagForm.ShowDialog($form)
+}
+
 $script:Prefs = Load-UiPreferences
 $script:CurrentLanguage = $script:Prefs.language
 $script:WizardCompleted = [bool]$script:Prefs.firstRunCompleted
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = T 'app.title'
-$form.Size = New-Object System.Drawing.Size(980, 930)
+$form.Text = "$(T 'app.title') $(Get-ProjectVersion)"
+$form.Size = New-Object System.Drawing.Size(980, 815)
 $form.StartPosition = 'CenterScreen'
 $form.SuspendLayout()
 
-$title = New-Label (T 'app.title') 16 14 220 26
+$title = New-Label ("$(T 'app.title') $(Get-ProjectVersion)") 16 14 260 26
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
-Register-Text $title 'app.title'
 $form.Controls.Add($title)
 
-$subtitle = New-Label (T 'app.subtitle') 245 18 420 22
+$subtitle = New-Label (T 'app.subtitle') 285 18 380 22
 $subtitle.ForeColor = [System.Drawing.Color]::DimGray
 Register-Text $subtitle 'app.subtitle'
 $form.Controls.Add($subtitle)
@@ -605,75 +694,9 @@ foreach ($b in $mainButtons) {
     $mainGroup.Controls.Add($btn)
 }
 
-$advancedGroup = New-Object System.Windows.Forms.GroupBox
-$advancedGroup.Text = T 'advanced.title'
-$advancedGroup.Location = New-Object System.Drawing.Point(490, 415)
-$advancedGroup.Size = New-Object System.Drawing.Size(455, 100)
-$advancedGroup.SuspendLayout()
-Register-Text $advancedGroup 'advanced.title'
-$form.Controls.Add($advancedGroup)
-
-$advancedButtons = @(
-    @('btn.start', 16, 34, 'start', $false),
-    @('btn.stop', 96, 34, 'stop', $false),
-    @('btn.status', 176, 34, 'status', $false),
-    @('btn.doctor', 256, 34, 'doctor', $false)
-)
-foreach ($b in $advancedButtons) {
-    $btn = New-Button (T $b[0]) $b[1] $b[2] 70
-    Register-Text $btn $b[0]
-    $cmd = $b[3]
-    $need = [bool]$b[4]
-    $btn.Add_Click({ Run-Command $cmd $need | Out-Null }.GetNewClosure())
-    $advancedGroup.Controls.Add($btn)
-}
-
-$refreshBtn = New-Button (T 'btn.refresh') 336 34 105
-Register-Text $refreshBtn 'btn.refresh'
-$refreshBtn.Add_Click({ Refresh-AuthStatus })
-$advancedGroup.Controls.Add($refreshBtn)
-
-$openInstallBtn = New-Button (T 'btn.openInstall') 16 66 125
-Register-Text $openInstallBtn 'btn.openInstall'
-$openInstallBtn.Add_Click({ if (Test-Path $installDirBox.Text.Trim()) { Start-Process $installDirBox.Text.Trim() } })
-$advancedGroup.Controls.Add($openInstallBtn)
-
-$openSettingsBtn = New-Button (T 'btn.openSettings') 150 66 130
-Register-Text $openSettingsBtn 'btn.openSettings'
-$openSettingsBtn.Add_Click({ $dir = Split-Path -Parent $settingsPathBox.Text.Trim(); if (Test-Path $dir) { Start-Process $dir } })
-$advancedGroup.Controls.Add($openSettingsBtn)
-
-$versionGroup = New-Object System.Windows.Forms.GroupBox
-$versionGroup.Text = T 'version.title'
-$versionGroup.Location = New-Object System.Drawing.Point(16, 530)
-$versionGroup.Size = New-Object System.Drawing.Size(455, 90)
-$versionGroup.SuspendLayout()
-Register-Text $versionGroup 'version.title'
-$form.Controls.Add($versionGroup)
-
-$projectVersionBtn = New-Button (T 'btn.projectVersion') 16 34 100
-Register-Text $projectVersionBtn 'btn.projectVersion'
-$projectVersionBtn.Add_Click({ Run-Command 'project-version' $false | Out-Null })
-$versionGroup.Controls.Add($projectVersionBtn)
-
-$projectUpdateBtn = New-Button (T 'btn.projectUpdate') 126 34 95
-Register-Text $projectUpdateBtn 'btn.projectUpdate'
-$projectUpdateBtn.Add_Click({ Run-Command 'project-update' $false | Out-Null })
-$versionGroup.Controls.Add($projectUpdateBtn)
-
-$proxyVersionBtn = New-Button (T 'btn.proxyVersion') 231 34 110
-Register-Text $proxyVersionBtn 'btn.proxyVersion'
-$proxyVersionBtn.Add_Click({ Run-Command 'cliproxy-version' $false | Out-Null })
-$versionGroup.Controls.Add($proxyVersionBtn)
-
-$proxyUpdateBtn = New-Button (T 'btn.proxyUpdate') 351 34 90
-Register-Text $proxyUpdateBtn 'btn.proxyUpdate'
-$proxyUpdateBtn.Add_Click({ Run-Command 'cliproxy-update' $false | Out-Null })
-$versionGroup.Controls.Add($proxyUpdateBtn)
-
 $modelsGroup = New-Object System.Windows.Forms.GroupBox
 $modelsGroup.Text = T 'models.title'
-$modelsGroup.Location = New-Object System.Drawing.Point(490, 530)
+$modelsGroup.Location = New-Object System.Drawing.Point(490, 415)
 $modelsGroup.Size = New-Object System.Drawing.Size(455, 170)
 $modelsGroup.SuspendLayout()
 Register-Text $modelsGroup 'models.title'
@@ -704,9 +727,27 @@ Register-Text $saveModelsBtn 'btn.configureModels'
 $saveModelsBtn.Add_Click({ Run-Command 'configure-models' $false | Out-Null })
 $modelsGroup.Controls.Add($saveModelsBtn)
 
+$toolsGroup = New-Object System.Windows.Forms.GroupBox
+$toolsGroup.Text = T 'advanced.title'
+$toolsGroup.Location = New-Object System.Drawing.Point(16, 530)
+$toolsGroup.Size = New-Object System.Drawing.Size(455, 55)
+$toolsGroup.SuspendLayout()
+Register-Text $toolsGroup 'advanced.title'
+$form.Controls.Add($toolsGroup)
+
+$advancedManagementBtn = New-Button (T 'btn.advancedManagement') 28 16 185
+Register-Text $advancedManagementBtn 'btn.advancedManagement'
+$advancedManagementBtn.Add_Click({ Show-AdvancedManagementWindow })
+$toolsGroup.Controls.Add($advancedManagementBtn)
+
+$diagnosticsBtn = New-Button (T 'btn.diagnostics') 238 16 185
+Register-Text $diagnosticsBtn 'btn.diagnostics'
+$diagnosticsBtn.Add_Click({ Show-DiagnosticsWindow })
+$toolsGroup.Controls.Add($diagnosticsBtn)
+
 $logGroup = New-Object System.Windows.Forms.GroupBox
 $logGroup.Text = T 'log.title'
-$logGroup.Location = New-Object System.Drawing.Point(16, 715)
+$logGroup.Location = New-Object System.Drawing.Point(16, 600)
 $logGroup.Size = New-Object System.Drawing.Size(930, 165)
 $logGroup.SuspendLayout()
 Register-Text $logGroup 'log.title'
@@ -732,7 +773,7 @@ $languageBox.Add_SelectedIndexChanged({
 
 $form.Add_FormClosing({ Save-UiPreferences })
 $form.Add_Shown({
-    $form.BeginInvoke([Action]{
+    $form.BeginInvoke([System.Action]{
         Refresh-AuthStatus
         if ($script:Prefs.settingsLoadFailed) { Append-Log (T 'log.settingsFallback') }
     }) | Out-Null
@@ -742,8 +783,7 @@ Apply-Language
 $settingsGroup.ResumeLayout($false)
 $wizardGroup.ResumeLayout($false)
 $mainGroup.ResumeLayout($false)
-$advancedGroup.ResumeLayout($false)
-$versionGroup.ResumeLayout($false)
+$toolsGroup.ResumeLayout($false)
 $modelsGroup.ResumeLayout($false)
 $logGroup.ResumeLayout($false)
 $form.ResumeLayout($false)

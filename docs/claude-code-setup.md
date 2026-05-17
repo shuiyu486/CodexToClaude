@@ -29,6 +29,8 @@
 
 ## 版本和模型检查
 
+项目版本号来自仓库根目录 `VERSION` 文件；`project-version` 会同时显示该版本和 git 状态。
+
 首次配置完成后可检查版本与模型：
 
 ```powershell

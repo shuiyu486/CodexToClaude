@@ -21,11 +21,13 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - `auth-status`：检查 Codex OAuth auth 状态；GUI 通过 `auth-status -Json` 读取登录状态。
 - `verify`：验证 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
 - `doctor`：执行 `status + verify`。
-- `project-version` / `project-update`：查看项目 git 状态；仅在工作区干净时安全快进更新。
+- `project-version` / `project-update`：查看 `VERSION` 项目版本和 git 状态；仅在工作区干净时安全快进更新。
 - `cliproxy-version` / `cliproxy-update`：查看/更新 CLIProxyAPI；更新流程必须停服、备份、替换、恢复启动。
 - `models` / `configure-models`：查看/更新 Claude Code 的 Opus/Sonnet/Haiku 模型 env。
 
 ## 不可破坏的行为契约
+
+- 项目版本号单一真源是根目录 `VERSION`，格式如 `v1.0.0.1`；CLI/GUI/文档示例必须保持一致。
 
 - `port` 和 `proxy-url` 必须由用户显式提供；直连也必须显式确认 `none`/`direct`。
 - `ProxyUrl` 只接受 `http://`、`https://`、`socks5://`、`none`、`direct` 等明确值，不把空值猜成直连。
@@ -42,7 +44,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 快速开始向导顺序是 `Install -> Login -> Configure -> Restart -> Verify`；每一步仍调用 CLI 子命令。
 - 高级/诊断命令与主流程分区展示，避免重新变成一排按钮墙。
 - 修改 GUI 文案或向导顺序时，同步 `README.md` 的用户说明和 `docs/project-guide.md` 的维护约定。
-- GUI 的版本管理和模型配置按钮只能调用 CLI 子命令，不直接执行 git、下载、替换 exe 或写 settings。
+- GUI 的版本管理在高级管理窗口，模型配置在主界面；按钮只能调用 CLI 子命令，不直接执行 git、下载、替换 exe 或写 settings。
 
 ## 验证标准
 

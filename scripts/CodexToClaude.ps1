@@ -9,9 +9,9 @@ param(
     [string]$ApiKey = 'sk-cliproxy-local-dev-2026',
     [string]$InstallDir = (Join-Path $env:USERPROFILE '.cli-proxy-api'),
     [string]$ClaudeSettingsPath = (Join-Path $env:USERPROFILE '.claude\settings.json'),
-    [string]$OpusModel = 'gpt-5.5(xhigh)',
-    [string]$SonnetModel = 'gpt-5.3-codex(high)',
-    [string]$HaikuModel = 'gpt-5.3-codex-spark(medium)',
+    [string]$OpusModel = 'gpt-5.5',
+    [string]$SonnetModel = 'gpt-5.4',
+    [string]$HaikuModel = 'gpt-5.4',
     [switch]$Device,
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
@@ -32,6 +32,14 @@ function Write-Warn([string]$Message) { Write-Host ("    [!!] " + $Message) -For
 function Write-Fail([string]$Message) { Write-Host ("    [X] " + $Message) -ForegroundColor Red }
 function Write-Info([string]$Message) { Write-Host ("    .. " + $Message) -ForegroundColor Gray }
 
+function Get-ProjectVersion {
+    $versionPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION'
+    if (-not (Test-Path $versionPath)) { return 'v0.0.0.0' }
+    $version = (Get-Content $versionPath -Raw -Encoding UTF8).Trim()
+    if ($version -notmatch '^v\d+\.\d+\.\d+\.\d+$') { return 'v0.0.0.0' }
+    return $version
+}
+
 function Write-FileUtf8NoBom([string]$Path, [string]$Content) {
     $dir = Split-Path -Parent $Path
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
@@ -39,7 +47,7 @@ function Write-FileUtf8NoBom([string]$Path, [string]$Content) {
 }
 
 function Show-Help {
-    Write-Host 'CodexToClaude' -ForegroundColor Cyan
+    Write-Host "CodexToClaude $(Get-ProjectVersion)" -ForegroundColor Cyan
     Write-Host 'Use Codex Plus/Pro through CLIProxyAPI in Claude Code.' -ForegroundColor Gray
     Write-Host ''
     Write-Host 'Commands:'
@@ -53,7 +61,7 @@ function Show-Help {
     Write-Host '  auth-status  Show Codex OAuth login/auth status'
     Write-Host '  verify       Verify /v1/models and /v1/messages'
     Write-Host '  doctor       Run status and verify'
-    Write-Host '  project-version   Show CodexToClaude git version status'
+    Write-Host '  project-version   Show CodexToClaude VERSION and git status'
     Write-Host '  project-update    Safely update CodexToClaude with git pull --ff-only'
     Write-Host '  cliproxy-version  Show local and latest CLIProxyAPI version'
     Write-Host '  cliproxy-update   Stop, update, and restart CLIProxyAPI latest release'
@@ -548,6 +556,7 @@ function Show-ProjectVersion {
     $status = Get-GitOutput @('status', '--porcelain')
     $dirty = -not [string]::IsNullOrWhiteSpace($status)
     $upstream = Get-GitOutput @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+    Write-Info "Version: $(Get-ProjectVersion)"
     Write-Info "Repository: $root"
     Write-Info "Branch: $branch"
     Write-Info "Commit: $sha"
