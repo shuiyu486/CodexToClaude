@@ -14,3 +14,11 @@ CodexToClaude 将 Codex Plus/Pro 订阅通过 CLIProxyAPI 暴露为 Claude Code 
 - `Start-Process` 启动 CLIProxyAPI 时必须显式传 `-config`，并设置 `WorkingDirectory` 为 `~\.cli-proxy-api`。
 - GUI 是 `scripts/CodexToClaude.UI.ps1`，双击入口是 `CodexToClaude-GUI.cmd`；GUI 只调用 CLI 主脚本，不重复业务逻辑。
 - 详细项目背景和迭代指南按需读取 `docs/project-guide.md`。
+
+## 文档分工
+
+- `README.md` 面向普通用户和未来开源首页，保持友好、完整但不写维护细节。
+- `docs/project-guide.md` 面向 Claude Code 维护/迭代，复杂背景按需读取，不塞进本文件。
+- `docs/claude-code-setup.md` 面向新电脑自动化配置流程。
+- `docs/手动安装与使用.md` 面向不用 CodexToClaude 工具、手动配置 CLIProxyAPI 的用户。
+- 不再维护重复的 `docs/manual.md`；手动说明统一放到 `docs/手动安装与使用.md`。

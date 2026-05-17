@@ -188,6 +188,20 @@ GUI 修改后至少验证：
 
 不要退回双击 exe 或依赖当前目录。
 
+## 文档分工
+
+- `README.md`：开源首页，面向最终用户，优先介绍 GUI 和最短路径。
+- `docs/claude-code-setup.md`：给 Claude Code 在新机器上自动安装/配置时读取。
+- `docs/手动安装与使用.md`：给用户手动安装 CLIProxyAPI、手动改配置时读取。
+- `docs/project-guide.md`：给 Claude Code 修改、迭代本项目时按需读取。
+
+文档更新原则：
+
+- 用户入口变化先改 README。
+- CLI/GUI 行为变化同步改 `project-guide.md`。
+- 手动 CLIProxyAPI 流程变化同步改 `docs/手动安装与使用.md`。
+- 避免维护两个内容重复的 manual 文档。
+
 ## 安全约束
 
 提交前检查：
