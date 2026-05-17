@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Script = Join-Path $RepoRoot 'scripts\CodexToClaude.ps1'
+$UiScript = Join-Path $RepoRoot 'scripts\CodexToClaude.UI.ps1'
+$GuiLauncher = Join-Path $RepoRoot 'CodexToClaude-GUI.cmd'
 $Passed = 0
 $Failed = 0
 
@@ -18,14 +20,28 @@ function TestCase([string]$Name, [scriptblock]$Body) {
     }
 }
 
-TestCase 'PowerShell syntax parses' {
+function Assert-Syntax([string]$Path) {
     $tokens = $null
     $errors = $null
-    [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$tokens, [ref]$errors) | Out-Null
+    [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errors) | Out-Null
     if ($errors.Count -gt 0) { throw ($errors | Select-Object -First 1 | Out-String) }
 }
 
-TestCase 'Help command runs' {
+TestCase 'CLI PowerShell syntax parses' {
+    Assert-Syntax $Script
+}
+
+TestCase 'GUI PowerShell syntax parses' {
+    Assert-Syntax $UiScript
+}
+
+TestCase 'GUI launcher exists' {
+    if (-not (Test-Path $GuiLauncher)) { throw 'CodexToClaude-GUI.cmd missing.' }
+    $content = Get-Content $GuiLauncher -Raw
+    if ($content -notmatch 'CodexToClaude.UI.ps1') { throw 'GUI launcher does not start UI script.' }
+}
+
+TestCase 'Help command runs and explains Port ProxyUrl' {
     & $Script help
 }
 
@@ -54,6 +70,30 @@ TestCase 'ProxyUrl writes explicit proxy-url line' {
         & $Script configure -Port 18318 -ProxyUrl 'http://127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
         $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
         if ($config -notmatch 'proxy-url: "http://127\.0\.0\.1:7897"') { throw 'proxy-url line missing.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'Auth status JSON does not expose tokens' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-auth"
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    New-Item -ItemType Directory $installDir -Force | Out-Null
+    try {
+        $auth = @{
+            type = 'codex'
+            email = 'user@example.com'
+            expired = '2099-01-01T00:00:00Z'
+            disabled = $false
+            access_token = 'SECRET_ACCESS'
+            refresh_token = 'SECRET_REFRESH'
+            id_token = 'SECRET_ID'
+        } | ConvertTo-Json -Depth 5
+        [System.IO.File]::WriteAllText((Join-Path $installDir 'codex-user-plus.json'), $auth, [System.Text.Encoding]::UTF8)
+        $output = & $Script auth-status -InstallDir $installDir -Json 2>&1 | Out-String
+        if ($output -match 'SECRET_ACCESS|SECRET_REFRESH|SECRET_ID') { throw 'Auth status leaked token fields.' }
+        $parsed = $output | ConvertFrom-Json
+        if ($parsed.status -ne 'logged_in') { throw 'Expected logged_in auth status.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

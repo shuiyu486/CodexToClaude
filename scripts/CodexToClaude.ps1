@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'verify', 'doctor', 'help')]
+    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'help')]
     [string]$Command = 'help',
 
     [int]$Port,
@@ -14,7 +14,8 @@ param(
     [string]$HaikuModel = 'gpt-5.3-codex-spark(medium)',
     [switch]$Device,
     [switch]$Force,
-    [switch]$SkipClaudeStreamCheck
+    [switch]$SkipClaudeStreamCheck,
+    [switch]$Json
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,15 +43,21 @@ function Show-Help {
     Write-Host 'Use Codex Plus/Pro through CLIProxyAPI in Claude Code.' -ForegroundColor Gray
     Write-Host ''
     Write-Host 'Commands:'
-    Write-Host '  install     Install/update CLIProxyAPI config and optionally download executable'
-    Write-Host '  login       Run Codex OAuth login through CLIProxyAPI'
-    Write-Host '  configure   Merge Claude Code settings.json env values'
-    Write-Host '  start       Start CLIProxyAPI in background'
-    Write-Host '  stop        Stop CLIProxyAPI listening on configured port'
-    Write-Host '  restart     Stop then start CLIProxyAPI and wait for readiness'
-    Write-Host '  status      Show local setup status'
-    Write-Host '  verify      Verify /v1/models and /v1/messages'
-    Write-Host '  doctor      Run status and verify'
+    Write-Host '  install      Install/update CLIProxyAPI config and optionally download executable'
+    Write-Host '  login        Run Codex OAuth login through CLIProxyAPI'
+    Write-Host '  configure    Merge Claude Code settings.json env values'
+    Write-Host '  start        Start CLIProxyAPI in background'
+    Write-Host '  stop         Stop CLIProxyAPI listening on configured port'
+    Write-Host '  restart      Stop then start CLIProxyAPI and wait for readiness'
+    Write-Host '  status       Show local setup status'
+    Write-Host '  auth-status  Show Codex OAuth login/auth status'
+    Write-Host '  verify       Verify /v1/models and /v1/messages'
+    Write-Host '  doctor       Run status and verify'
+    Write-Host ''
+    Write-Host 'Required setup values:' -ForegroundColor Yellow
+    Write-Host '  -Port      Local CLIProxyAPI listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 8317'
+    Write-Host '  -ProxyUrl  Upstream proxy for Codex/OpenAI access. Example: http://127.0.0.1:7897'
+    Write-Host '             If your network can access upstream directly, explicitly use: -ProxyUrl none'
     Write-Host ''
     Write-Host 'Examples:'
     Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl "http://127.0.0.1:7897"'
@@ -72,9 +79,14 @@ function Resolve-Port([bool]$RequirePrompt) {
     if ($Port -gt 0) { return $Port }
     $fromConfig = Get-ConfigValue 'port'
     if ($fromConfig -and ($fromConfig -match '^\d+$')) { return [int]$fromConfig }
-    if (-not $RequirePrompt) { throw 'Missing port. Run configure or install with -Port first.' }
+    if (-not $RequirePrompt) {
+        throw 'Missing port. Run configure/install with -Port first. Example: .\scripts\CodexToClaude.ps1 configure -Port 8317 -ProxyUrl http://127.0.0.1:7897'
+    }
     while ($true) {
-        $inputPort = Read-Host 'Enter CLIProxyAPI local listen port, for example 8317'
+        Write-Host ''
+        Write-Host 'Port is the local CLIProxyAPI listen port. Claude Code will call http://127.0.0.1:<Port>.' -ForegroundColor Yellow
+        Write-Host 'Example: 8317' -ForegroundColor Gray
+        $inputPort = Read-Host 'Enter Port'
         if ($inputPort -match '^\d+$' -and [int]$inputPort -gt 0 -and [int]$inputPort -lt 65536) {
             return [int]$inputPort
         }
@@ -97,12 +109,19 @@ function Resolve-ProxyUrl([bool]$RequirePrompt) {
     if ($ProxyUrlProvided) { return Normalize-ProxyUrl $ProxyUrl }
     $fromConfig = Get-ConfigValue 'proxy-url'
     if ($null -ne $fromConfig) { return Normalize-ProxyUrl $fromConfig }
-    if (-not $RequirePrompt) { throw 'Missing proxy-url. Run configure or install with -ProxyUrl first; use -ProxyUrl none for direct access.' }
+    if (-not $RequirePrompt) {
+        throw 'Missing proxy-url. Run configure/install with -ProxyUrl first. Use -ProxyUrl none for direct access.'
+    }
     while ($true) {
-        $inputProxy = Read-Host 'Enter upstream proxy URL, for example http://127.0.0.1:7897; enter none for direct access'
+        Write-Host ''
+        Write-Host 'ProxyUrl is the upstream proxy used by CLIProxyAPI to access Codex/OpenAI.' -ForegroundColor Yellow
+        Write-Host 'Example: http://127.0.0.1:7897' -ForegroundColor Gray
+        Write-Host 'If direct access works, enter none. Do not leave it blank.' -ForegroundColor Gray
+        $inputProxy = Read-Host 'Enter ProxyUrl'
         try {
             $normalized = Normalize-ProxyUrl $inputProxy
             if ($null -ne $normalized) { return $normalized }
+            Write-Warn 'ProxyUrl cannot be blank. Use none for direct access.'
         } catch {
             Write-Warn $_.Exception.Message
         }
@@ -264,18 +283,97 @@ function Get-AuthFiles {
     return @(Get-ChildItem $InstallDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'settings|test|temp' })
 }
 
-function Assert-AuthReady {
+function Get-AuthStatus {
     $authFiles = Get-AuthFiles
-    if ($authFiles.Count -eq 0) { throw "No Codex auth JSON found in $InstallDir. Run login first." }
-    $valid = @()
+    $items = @()
     foreach ($file in $authFiles) {
+        $item = [ordered]@{
+            file = $file.Name
+            validJson = $false
+            type = $null
+            email = $null
+            expired = $null
+            disabled = $null
+            usable = $false
+            issue = $null
+        }
         try {
-            $json = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($json.type -eq 'codex' -and $json.disabled -ne $true) { $valid += $file }
-        } catch {}
+            $authJson = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+            $item.validJson = $true
+            $item.type = $authJson.type
+            $item.email = $authJson.email
+            $item.expired = $authJson.expired
+            $item.disabled = $authJson.disabled
+            if ($authJson.type -ne 'codex') { $item.issue = 'not_codex' }
+            elseif ($authJson.disabled -eq $true) { $item.issue = 'disabled' }
+            else { $item.usable = $true }
+        } catch {
+            $item.issue = 'invalid_json'
+        }
+        $items += [pscustomobject]$item
     }
-    if ($valid.Count -eq 0) { throw 'No enabled Codex auth JSON found. Check disabled=false and type=codex.' }
-    Write-OK "Enabled Codex auth files: $($valid.Count)"
+    $usable = @($items | Where-Object { $_.usable })
+    $status = 'not_logged_in'
+    $message = 'No auth JSON found. Run login first.'
+    if ($items.Count -gt 0 -and $usable.Count -eq 0) {
+        if (@($items | Where-Object { $_.issue -eq 'disabled' }).Count -gt 0) {
+            $status = 'disabled'
+            $message = 'Codex auth JSON found but disabled=true.'
+        } elseif (@($items | Where-Object { $_.issue -eq 'not_codex' }).Count -gt 0) {
+            $status = 'invalid_type'
+            $message = 'Auth JSON found, but no enabled type=codex auth is available.'
+        } else {
+            $status = 'invalid'
+            $message = 'Auth JSON found, but it is invalid or unusable.'
+        }
+    } elseif ($usable.Count -gt 0) {
+        $status = 'logged_in'
+        $first = $usable | Select-Object -First 1
+        $identity = $first.email
+        if (-not $identity) { $identity = $first.file }
+        $message = "Logged in: $identity; usable auths=$($usable.Count)"
+        if ($first.expired) { $message += "; expires=$($first.expired)" }
+    }
+    return [pscustomobject]@{
+        status = $status
+        message = $message
+        authCount = $items.Count
+        usableCount = $usable.Count
+        auths = $items
+        suggestions = @(
+            'Check that your proxy works, then rerun install/configure with the correct -ProxyUrl.',
+            'Try device login: .\scripts\CodexToClaude.ps1 login -Device',
+            'Make sure the Codex OAuth JSON is in ~/.cli-proxy-api, not a nested auths folder.',
+            'Make sure the JSON has type=codex and does not have disabled=true.',
+            'Check ~/.cli-proxy-api/logs/main.log for upstream or OAuth errors.'
+        )
+    }
+}
+
+function Write-AuthStatus([object]$Status) {
+    if ($Json) {
+        $Status | ConvertTo-Json -Depth 8
+        return
+    }
+    if ($Status.status -eq 'logged_in') { Write-OK $Status.message } else { Write-Warn $Status.message }
+    foreach ($auth in $Status.auths) {
+        $safeEmail = $auth.email
+        if (-not $safeEmail) { $safeEmail = '-' }
+        Write-Info "auth=$($auth.file) type=$($auth.type) email=$safeEmail disabled=$($auth.disabled) usable=$($auth.usable) issue=$($auth.issue) expires=$($auth.expired)"
+    }
+    if ($Status.status -ne 'logged_in') {
+        Write-Info 'Recommended fixes:'
+        foreach ($s in $Status.suggestions) { Write-Info "  - $s" }
+    }
+}
+
+function Assert-AuthReady {
+    $status = Get-AuthStatus
+    if ($status.status -ne 'logged_in') {
+        Write-AuthStatus $status
+        throw 'No enabled Codex auth JSON found.'
+    }
+    Write-OK "Enabled Codex auth files: $($status.usableCount)"
 }
 
 function Set-JsonProperty([object]$Object, [string]$Name, [object]$Value) {
@@ -309,8 +407,8 @@ function Configure-Claude([int]$ResolvedPort) {
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
     Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'high'
     Remove-JsonProperty $settings.env 'ANTHROPIC_MODEL'
-    $json = $settings | ConvertTo-Json -Depth 20
-    Write-FileUtf8NoBom $ClaudeSettingsPath ($json + "`n")
+    $outJson = $settings | ConvertTo-Json -Depth 20
+    Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
     Write-OK "Updated: $ClaudeSettingsPath"
 }
 
@@ -368,8 +466,8 @@ function Show-Status([int]$ResolvedPort) {
     Write-Step 'Status'
     if (Test-Path $ExePath) { Write-OK "Executable: $ExePath" } else { Write-Fail "Executable missing: $ExePath" }
     if (Test-Path $ConfigPath) { Write-OK "Config: $ConfigPath" } else { Write-Fail "Config missing: $ConfigPath" }
-    $authFiles = Get-AuthFiles
-    Write-Info "Auth JSON files in root: $($authFiles.Count)"
+    $authStatus = Get-AuthStatus
+    Write-AuthStatus $authStatus
     $procs = Get-PortProcesses $ResolvedPort
     if ($procs.Count -gt 0) {
         foreach ($proc in $procs) { Write-OK "Listening on ${ResolvedPort}: $($proc.ProcessName) pid=$($proc.Id)" }
@@ -424,10 +522,20 @@ switch ($Command) {
     'login' {
         Ensure-InstallDir
         if (-not (Test-Path $ExePath)) { Download-CLIProxyApi }
+        if (-not (Test-Path $ConfigPath)) { Write-Warn 'Config is missing. Run install/configure first if login fails.' }
         $loginArg = '-codex-login'
         if ($Device) { $loginArg = '-codex-device-login' }
-        & $ExePath -config $ConfigPath $loginArg
-        Assert-AuthReady
+        try {
+            & $ExePath -config $ConfigPath $loginArg
+        } catch {
+            Write-Fail "Login command failed: $($_.Exception.Message)"
+            $status = Get-AuthStatus
+            Write-AuthStatus $status
+            throw
+        }
+        $status = Get-AuthStatus
+        Write-AuthStatus $status
+        if ($status.status -ne 'logged_in') { throw 'Login finished but no usable Codex auth was found.' }
     }
     'configure' {
         $resolvedPort = Resolve-Port $true
@@ -452,6 +560,11 @@ switch ($Command) {
     'status' {
         $resolvedPort = Resolve-Port $false
         Show-Status $resolvedPort
+    }
+    'auth-status' {
+        $status = Get-AuthStatus
+        Write-AuthStatus $status
+        if ($status.status -ne 'logged_in') { exit 1 }
     }
     'verify' {
         $resolvedPort = Resolve-Port $false
