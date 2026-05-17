@@ -1,0 +1,13 @@
+*.log
+*.tmp
+*.bak
+*.zip
+download-extract/
+logs/
+auths/
+*.output.json
+*.stream.json
+codex-*.json
+*token*.json
+.env
+.claude/settings.local.json
