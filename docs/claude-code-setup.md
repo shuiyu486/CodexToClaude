@@ -67,5 +67,5 @@
 - `cli-proxy-api.exe` 是否存在。
 - `config.yaml` 是否存在。
 - `Start-Process` 是否带了 `-config`。
-- `WorkingDirectory` 是否为 `%USERPROFILE%\.cli-proxy-api`。
+- `WorkingDirectory` 是否为 `<repo-root>\cli-proxy-api`。
 - 目标端口是否被非 CLIProxyAPI 进程占用。

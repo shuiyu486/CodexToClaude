@@ -11,3 +11,4 @@ codex-*.json
 *token*.json
 .env
 .claude/settings.local.json
+cli-proxy-api/

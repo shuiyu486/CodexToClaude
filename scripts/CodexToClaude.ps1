@@ -7,7 +7,7 @@ param(
     [int]$Port,
     [string]$ProxyUrl,
     [string]$ApiKey = 'sk-cliproxy-local-dev-2026',
-    [string]$InstallDir = (Join-Path $env:USERPROFILE '.cli-proxy-api'),
+    [string]$InstallDir = (Join-Path (Split-Path -Parent $PSScriptRoot) 'cli-proxy-api'),
     [string]$ClaudeSettingsPath = (Join-Path $env:USERPROFILE '.claude\settings.json'),
     [string]$OpusModel = 'gpt-5.5',
     [string]$SonnetModel = 'gpt-5.4',
@@ -144,6 +144,34 @@ function Resolve-ProxyUrl([bool]$RequirePrompt) {
 
 function Ensure-InstallDir { if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Force $InstallDir | Out-Null } }
 
+function Move-LegacyInstall {
+    $legacyDir = Join-Path $env:USERPROFILE '.cli-proxy-api'
+    if (-not (Test-Path $legacyDir)) { return }
+    $legacyItems = Get-ChildItem $legacyDir -ErrorAction SilentlyContinue
+    if (-not $legacyItems -or $legacyItems.Count -eq 0) { return }
+    if ((Join-Path $legacyDir 'config.yaml') -eq $ConfigPath) { return }
+    Write-Step 'Migrating legacy install from ~/.cli-proxy-api'
+    Ensure-InstallDir
+    $copied = 0
+    foreach ($item in $legacyItems) {
+        $dest = Join-Path $InstallDir $item.Name
+        if (Test-Path $dest) {
+            Write-Info "Skip (exists): $($item.Name)"
+            continue
+        }
+        if ($item.PSIsContainer) {
+            Copy-Item $item.FullName $dest -Recurse -Force
+        } else {
+            Copy-Item $item.FullName $dest -Force
+        }
+        Write-Info "Migrated: $($item.Name)"
+        $copied++
+    }
+    if ($copied -gt 0) {
+        Write-OK "Migrated $copied items to $InstallDir. You may remove $legacyDir when ready."
+    }
+}
+
 function Get-CLIProxyLatestRelease {
     $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing
     $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
@@ -201,7 +229,7 @@ remote-management:
   secret-key: ""
   disable-control-panel: false
 
-auth-dir: "~/.cli-proxy-api"
+auth-dir: "$($InstallDir.Replace('\', '/'))"
 
 api-keys:
   - "$ApiKey"
@@ -367,9 +395,9 @@ function Get-AuthStatus {
         suggestions = @(
             'Check that your proxy works, then rerun install/configure with the correct -ProxyUrl.',
             'Try device login: .\scripts\CodexToClaude.ps1 login -Device',
-            'Make sure the Codex OAuth JSON is in ~/.cli-proxy-api, not a nested auths folder.',
+            "Make sure the Codex OAuth JSON is in $InstallDir, not a nested auths folder.",
             'Make sure the JSON has type=codex and does not have disabled=true.',
-            'Check ~/.cli-proxy-api/logs/main.log for upstream or OAuth errors.'
+            "Check $InstallDir/logs/main.log for upstream or OAuth errors."
         )
     }
 }
@@ -689,6 +717,7 @@ function Configure-ClaudeModels {
 switch ($Command) {
     'help' { Show-Help }
     'install' {
+        Move-LegacyInstall
         Ensure-InstallDir
         $resolvedPort = Resolve-Port $true
         $resolvedProxy = Resolve-ProxyUrl $true
@@ -697,6 +726,7 @@ switch ($Command) {
         Write-OK 'Install/config step complete. Run login, configure, restart, verify next.'
     }
     'login' {
+        Move-LegacyInstall
         Ensure-InstallDir
         if (-not (Test-Path $ExePath)) { Download-CLIProxyApi }
         if (-not (Test-Path $ConfigPath)) { Write-Warn 'Config is missing. Run install/configure first if login fails.' }
@@ -722,6 +752,7 @@ switch ($Command) {
         Configure-Claude $resolvedPort
     }
     'start' {
+        Move-LegacyInstall
         $resolvedPort = Resolve-Port $false
         Start-CLIProxyApi $resolvedPort
     }
@@ -730,11 +761,13 @@ switch ($Command) {
         Stop-CLIProxyApi $resolvedPort
     }
     'restart' {
+        Move-LegacyInstall
         $resolvedPort = Resolve-Port $false
         Stop-CLIProxyApi $resolvedPort
         Start-CLIProxyApi $resolvedPort
     }
     'status' {
+        Move-LegacyInstall
         $resolvedPort = Resolve-Port $false
         Show-Status $resolvedPort
     }
@@ -744,10 +777,12 @@ switch ($Command) {
         if ($status.status -ne 'logged_in') { exit 1 }
     }
     'verify' {
+        Move-LegacyInstall
         $resolvedPort = Resolve-Port $false
         Verify-Setup $resolvedPort
     }
     'doctor' {
+        Move-LegacyInstall
         $resolvedPort = Resolve-Port $false
         Show-Status $resolvedPort
         Verify-Setup $resolvedPort

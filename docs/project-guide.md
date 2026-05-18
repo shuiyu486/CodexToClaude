@@ -84,7 +84,7 @@ CodexToClaude 基于 CLIProxyAPI 构建；CLIProxyAPI 负责本地 Anthropic-com
 - 项目更新使用 `project-update`，只允许在 git 工作区干净时执行 `git fetch` + `git pull --ff-only`，避免覆盖用户未提交改动。
 - CLIProxyAPI 更新使用 `cliproxy-update`，流程是 stop -> 下载 latest release -> 备份旧 exe -> 替换 -> 如原本运行则 start。
 - CLIProxyAPI 自动下载仍只选择 GitHub release 中 Windows x64 / amd64 的 zip 或 exe asset。
-- 更新 CLIProxyAPI 后必须保留 `-config` 和 `WorkingDirectory=~/.cli-proxy-api` 启动契约。
+- 更新 CLIProxyAPI 后必须保留 `-config` 和 `WorkingDirectory` 设为 `$InstallDir` 的启动契约。
 - 修改版本管理逻辑后，除脚本测试外，涉及真实服务管理时仍需跑 `restart` 和 `verify`。
 
 ## 配置写入规则
@@ -92,7 +92,7 @@ CodexToClaude 基于 CLIProxyAPI 构建；CLIProxyAPI 负责本地 Anthropic-com
 `config.yaml` 写入位置：
 
 ```text
-~/.cli-proxy-api/config.yaml
+<repo-root>\cli-proxy-api\config.yaml
 ```
 
 核心字段：
@@ -101,7 +101,7 @@ CodexToClaude 基于 CLIProxyAPI 构建；CLIProxyAPI 负责本地 Anthropic-com
 host: "127.0.0.1"
 port: <用户提供>
 proxy-url: "<用户提供；直连时省略>"
-auth-dir: "~/.cli-proxy-api"
+auth-dir: "$InstallDir"
 ```
 
 `payload.filter` 默认保留：
@@ -142,7 +142,7 @@ payload:
 
 ## Login/auth 检查规则
 
-只检查 `~/.cli-proxy-api` 根目录下的 `*.json`，并忽略 settings/test/temp 命名文件。
+只检查 `<repo-root>\cli-proxy-api` 根目录下的 `*.json`，并忽略 settings/test/temp 命名文件。
 
 可用 auth 必须满足：
 
@@ -218,7 +218,7 @@ GUI 修改后至少验证：
 ```powershell
 -FilePath <cli-proxy-api.exe>
 -ArgumentList @('-config', '<config.yaml>')
--WorkingDirectory ~/.cli-proxy-api
+-WorkingDirectory $InstallDir
 ```
 
 不要退回双击 exe 或依赖当前目录。

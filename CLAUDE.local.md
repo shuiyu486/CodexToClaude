@@ -9,7 +9,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - Windows PowerShell 优先；脚本需兼容 Windows PowerShell 5.1，不引入 Node/.NET 打包链路。
 - 主业务入口是 `scripts/CodexToClaude.ps1`；GUI、文档和测试都应围绕它，不复制业务逻辑。
 - GUI 是 `scripts/CodexToClaude.UI.ps1`，双击入口是 `CodexToClaude-GUI.cmd`；GUI 只收集参数、展示状态、编排步骤并调用 CLI 主脚本。
-- CLIProxyAPI 安装目录默认是 `~\.cli-proxy-api`；GUI 偏好保存到 `~\.codextoclaude\ui-preferences.json`。
+- CLIProxyAPI 安装目录默认是 `<repo-root>\cli-proxy-api`（git 排除）；旧版 `~\.cli-proxy-api` 会自动迁移。
 
 ## 子命令职责
 
@@ -32,10 +32,10 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - `port` 和 `proxy-url` 必须由用户显式提供；直连也必须显式确认 `none`/`direct`。
 - `ProxyUrl` 只接受 `http://`、`https://`、`socks5://`、`none`、`direct` 等明确值，不把空值猜成直连。
 - `configure` 只合并更新 `~/.claude/settings.json` 的目标 `env` 键，保留 `statusLine`、`permissions`、`language` 等其它字段。
-- `auth-status` 只扫描 `~/.cli-proxy-api` 根目录 JSON，且可用 auth 必须满足 `type=codex`、非 `disabled=true`。
+- `auth-status` 扫描 `$InstallDir` 根目录 JSON，且可用 auth 必须满足 `type=codex`、非 `disabled=true`。
 - 禁止提交或输出 Codex OAuth JSON、`access_token`、`refresh_token`、`id_token`、真实 API key、日志。
 - `payload.filter` 过滤 `reasoning` / `reasoning.effort` 是为避免 Claude Code TUI 中文 thinking 流重复字符，不要随意删除。
-- `Start-Process` 启动 CLIProxyAPI 时必须显式传 `-config`，并设置 `WorkingDirectory` 为 `~\.cli-proxy-api`。
+- `Start-Process` 启动 CLIProxyAPI 时必须显式传 `-config`，并设置 `WorkingDirectory` 为 `$InstallDir`。
 
 ## GUI 迭代速记
 

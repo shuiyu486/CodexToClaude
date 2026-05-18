@@ -102,7 +102,7 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 
 ## Login 状态说明
 
-`Login` 完成后，程序会检查 `~/.cli-proxy-api` 根目录下的 OAuth JSON：
+`Login` 完成后，程序会检查 `<repo-root>\cli-proxy-api` 根目录下的 OAuth JSON：
 
 - 是否存在 auth JSON。
 - 是否为 `type=codex`。
@@ -115,17 +115,17 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 
 1. 确认代理可用，并重新运行 `install/configure -ProxyUrl ...`。
 2. 改用设备码登录：`.\scripts\CodexToClaude.ps1 login -Device`。
-3. 确认 OAuth JSON 位于 `~/.cli-proxy-api` 根目录，不在嵌套子目录。
+3. 确认 OAuth JSON 位于 `<repo-root>\cli-proxy-api` 根目录，不在嵌套子目录。
 4. 确认 JSON 中 `type` 为 `codex`，且没有 `disabled: true`。
-5. 查看 `~/.cli-proxy-api/logs/main.log`。
+5. 查看 `<repo-root>\cli-proxy-api\logs\main.log`。
 
 ## 它会改哪些文件
 
 | 文件 | 用途 |
 |---|---|
-| `~/.cli-proxy-api/config.yaml` | CLIProxyAPI 运行配置 |
-| `~/.cli-proxy-api/cli-proxy-api.exe` | CLIProxyAPI 可执行文件 |
-| `~/.cli-proxy-api/codex-*.json` | Codex OAuth 登录文件 |
+| `<repo-root>\cli-proxy-api\config.yaml` | CLIProxyAPI 运行配置 |
+| `<repo-root>\cli-proxy-api\cli-proxy-api.exe` | CLIProxyAPI 可执行文件 |
+| `<repo-root>\cli-proxy-api\codex-*.json` | Codex OAuth 登录文件 |
 | `~/.claude/settings.json` | Claude Code 访问本机代理的配置 |
 
 `settings.json` 会被合并更新，只替换 Claude Code 使用本地代理所需的 `env` 字段，不会覆盖 `statusLine`、`permissions` 等其它配置。
@@ -151,7 +151,7 @@ payload:
 
 CodexToClaude 基于 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 构建。CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换；CodexToClaude 提供 Windows 友好的安装、配置、启动、诊断、更新和 GUI 编排。
 
-CLIProxyAPI 手动更新方式：打开 [CLIProxyAPI releases](https://github.com/router-for-me/CLIProxyAPI/releases)，下载 Windows x64 / amd64 版本，停止本地服务后把 `cli-proxy-api.exe` 替换到 `~/.cli-proxy-api/cli-proxy-api.exe`，再运行 `restart` 和 `verify`。
+CLIProxyAPI 手动更新方式：打开 [CLIProxyAPI releases](https://github.com/router-for-me/CLIProxyAPI/releases)，下载 Windows x64 / amd64 版本，停止本地服务后把 `cli-proxy-api.exe` 替换到 `<repo-root>\cli-proxy-api\cli-proxy-api.exe`，再运行 `restart` 和 `verify`。
 
 ## 安全说明
 

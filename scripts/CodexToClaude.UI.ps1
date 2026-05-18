@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.Drawing
 $ScriptPath = Join-Path $PSScriptRoot 'CodexToClaude.ps1'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $VersionPath = Join-Path $RepoRoot 'VERSION'
-$DefaultInstallDir = Join-Path $env:USERPROFILE '.cli-proxy-api'
+$DefaultInstallDir = Join-Path $RepoRoot 'cli-proxy-api'
 $DefaultSettingsPath = Join-Path $env:USERPROFILE '.claude\settings.json'
 $PrefsDir = Join-Path $env:USERPROFILE '.codextoclaude'
 $PrefsPath = Join-Path $PrefsDir 'ui-preferences.json'
@@ -94,9 +94,9 @@ $I18N = @{
         'log.loginHelp' = 'Login troubleshooting:'
         'log.loginHelp1' = '1. Check proxy, then rerun install/configure with the correct ProxyUrl.'
         'log.loginHelp2' = '2. Try Device Login.'
-        'log.loginHelp3' = '3. Make sure Codex OAuth JSON is in ~/.cli-proxy-api root.'
+        'log.loginHelp3' = '3. Make sure Codex OAuth JSON is in the cli-proxy-api folder (inside the CodexToClaude project).'
         'log.loginHelp4' = '4. Make sure JSON has type=codex and disabled is not true.'
-        'log.loginHelp5' = '5. Check ~/.cli-proxy-api/logs/main.log.'
+        'log.loginHelp5' = '5. Check the cli-proxy-api/logs/main.log file in the CodexToClaude project.'
     }
     'zh-CN' = @{
         'app.title' = 'CodexToClaude'
@@ -171,9 +171,9 @@ $I18N = @{
         'log.loginHelp' = '登录排障建议：'
         'log.loginHelp1' = '1. 检查代理，然后使用正确的 ProxyUrl 重新运行 install/configure。'
         'log.loginHelp2' = '2. 尝试设备码登录。'
-        'log.loginHelp3' = '3. 确认 Codex OAuth JSON 位于 ~/.cli-proxy-api 根目录。'
+        'log.loginHelp3' = '3. 确认 Codex OAuth JSON 位于 CodexToClaude 项目内的 cli-proxy-api 目录。'
         'log.loginHelp4' = '4. 确认 JSON 中 type=codex 且 disabled 不是 true。'
-        'log.loginHelp5' = '5. 查看 ~/.cli-proxy-api/logs/main.log。'
+        'log.loginHelp5' = '5. 查看 CodexToClaude 项目内 cli-proxy-api/logs/main.log 日志。'
     }
 }
 
