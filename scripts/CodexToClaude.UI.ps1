@@ -245,6 +245,7 @@ function Load-UiPreferences {
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
         if ($defaults.lastValues.installDir -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.installDir = $DefaultInstallDir }
+        if ($defaults.lastValues.installDir -eq (Join-Path $env:USERPROFILE '.cli-proxy-api')) { $defaults.lastValues.installDir = $DefaultInstallDir }
         if ($defaults.lastValues.claudeSettingsPath -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.claudeSettingsPath = $DefaultSettingsPath }
         return $defaults
     } catch {
