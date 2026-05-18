@@ -384,6 +384,16 @@ function Build-Args([string]$Command, [bool]$NeedPortProxy) {
     return $args
 }
 
+function Build-WrapperScript {
+    $wrapperPath = Join-Path $env:TEMP "ctc-wrap-$([guid]::NewGuid().ToString()).ps1"
+    $content = @"
+`$ErrorActionPreference = 'Stop'
+& '$ScriptPath' @args *>&1
+"@
+    [System.IO.File]::WriteAllText($wrapperPath, $content, [System.Text.Encoding]::UTF8)
+    return $wrapperPath
+}
+
 function Run-Command([string]$Command, [bool]$NeedPortProxy) {
     if ($NeedPortProxy -and -not (Validate-Inputs $true)) { return $false }
     if ((@('start','stop','restart','status','verify','doctor') -contains $Command) -and -not (Validate-Inputs $false)) { return $false }
@@ -391,17 +401,21 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
     Append-Log ""
     Append-Log "> $Command"
     $stdout = Join-Path $env:TEMP "ctc-ui-stdout-$([guid]::NewGuid().ToString()).txt"
-    $stderr = Join-Path $env:TEMP "ctc-ui-stderr-$([guid]::NewGuid().ToString()).txt"
+    $wrapperPath = $null
     try {
-        $args = Build-Args $Command $NeedPortProxy
-        $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $cliFullArgs = Build-Args $Command $NeedPortProxy
+        $wrapperPath = Build-WrapperScript
+        $scriptIdx = [array]::IndexOf($cliFullArgs, $ScriptPath)
+        $cliOnly = if ($scriptIdx -ge 0) { $cliFullArgs[($scriptIdx + 1)..($cliFullArgs.Count - 1)] } else { @() }
+        $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $wrapperPath) + $cliOnly
+        $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -PassThru -NoNewWindow -RedirectStandardOutput $stdout
+        while (-not $proc.HasExited) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 200
+        }
         if (Test-Path $stdout) {
             $out = Get-Content $stdout -Raw -ErrorAction SilentlyContinue
             if ($out) { Append-Log $out.TrimEnd() }
-        }
-        if (Test-Path $stderr) {
-            $err = Get-Content $stderr -Raw -ErrorAction SilentlyContinue
-            if ($err) { Append-Log $err.TrimEnd() }
         }
         Append-Log "ExitCode: $($proc.ExitCode)"
         if ($Command -eq 'login' -or $Command -eq 'install' -or $Command -eq 'configure') { Refresh-AuthStatus }
@@ -411,7 +425,8 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
         if ($Command -eq 'login') { Append-LoginHelp }
         return $false
     } finally {
-        Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+        Remove-Item $stdout -Force -ErrorAction SilentlyContinue
+        if ($wrapperPath) { Remove-Item $wrapperPath -Force -ErrorAction SilentlyContinue }
     }
 }
 
