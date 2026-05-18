@@ -173,16 +173,24 @@ function Move-LegacyInstall {
 }
 
 function Get-CLIProxyLatestRelease {
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing
+    param([string]$Proxy)
+    $irmArgs = @{
+        Uri = 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest'
+        UseBasicParsing = $true
+    }
+    if ($Proxy) { $irmArgs.Proxy = $Proxy; $irmArgs.ProxyUseDefaultCredentials = $true }
+    $release = Invoke-RestMethod @irmArgs
     $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
     if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
     return [pscustomobject]@{ release = $release; asset = $asset }
 }
 
-function Install-CLIProxyAsset([string]$DownloadUrl, [string]$AssetName, [string]$DestinationPath) {
+function Install-CLIProxyAsset([string]$DownloadUrl, [string]$AssetName, [string]$DestinationPath, [string]$Proxy) {
     Ensure-InstallDir
     $downloadPath = Join-Path $InstallDir $AssetName
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $downloadPath -UseBasicParsing
+    $iwrArgs = @{ Uri = $DownloadUrl; OutFile = $downloadPath; UseBasicParsing = $true }
+    if ($Proxy) { $iwrArgs.Proxy = $Proxy; $iwrArgs.ProxyUseDefaultCredentials = $true }
+    Invoke-WebRequest @iwrArgs
     if ($downloadPath -match '\.exe$') {
         Move-Item -Force $downloadPath $DestinationPath
     } else {
@@ -198,6 +206,7 @@ function Install-CLIProxyAsset([string]$DownloadUrl, [string]$AssetName, [string
 }
 
 function Download-CLIProxyApi {
+    param([string]$Proxy)
     if (Test-Path $ExePath) {
         Write-OK "cli-proxy-api.exe exists: $ExePath"
         return
@@ -205,8 +214,8 @@ function Download-CLIProxyApi {
 
     Write-Step 'Downloading CLIProxyAPI latest release'
     try {
-        $latest = Get-CLIProxyLatestRelease
-        Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $ExePath
+        $latest = Get-CLIProxyLatestRelease -Proxy $Proxy
+        Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $ExePath -Proxy $Proxy
         Write-OK "Downloaded: $ExePath"
     } catch {
         Write-Fail "Automatic download failed: $($_.Exception.Message)"
@@ -631,6 +640,8 @@ function Show-CLIProxyVersion {
 function Update-CLIProxyApi {
     Write-Step 'Updating CLIProxyAPI latest release'
     Ensure-InstallDir
+    $proxyForUpdate = ''
+    if ($ProxyUrlProvided) { try { $proxyForUpdate = Normalize-ProxyUrl $ProxyUrl } catch {} }
     $resolvedPort = $null
     $wasRunning = $false
     try {
@@ -641,10 +652,10 @@ function Update-CLIProxyApi {
         Write-Warn "Could not determine or stop running service: $($_.Exception.Message)"
     }
 
-    $latest = Get-CLIProxyLatestRelease
+    $latest = Get-CLIProxyLatestRelease -Proxy $proxyForUpdate
     $staged = Join-Path $InstallDir 'cli-proxy-api.new.exe'
     if (Test-Path $staged) { Remove-Item $staged -Force }
-    Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $staged
+    Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $staged -Proxy $proxyForUpdate
     if (-not (Test-Path $staged)) { throw 'Downloaded CLIProxyAPI executable was not created.' }
     $backup = $null
     if (Test-Path $ExePath) {
@@ -721,14 +732,18 @@ switch ($Command) {
         Ensure-InstallDir
         $resolvedPort = Resolve-Port $true
         $resolvedProxy = Resolve-ProxyUrl $true
-        Download-CLIProxyApi
+        Download-CLIProxyApi -Proxy $resolvedProxy
         Write-Config $resolvedPort $resolvedProxy
         Write-OK 'Install/config step complete. Run login, configure, restart, verify next.'
     }
     'login' {
         Move-LegacyInstall
         Ensure-InstallDir
-        if (-not (Test-Path $ExePath)) { Download-CLIProxyApi }
+        if (-not (Test-Path $ExePath)) {
+            $proxyForDownload = ''
+            if ($ProxyUrlProvided) { try { $proxyForDownload = Normalize-ProxyUrl $ProxyUrl } catch {} }
+            Download-CLIProxyApi -Proxy $proxyForDownload
+        }
         if (-not (Test-Path $ConfigPath)) { Write-Warn 'Config is missing. Run install/configure first if login fails.' }
         $loginArg = '-codex-login'
         if ($Device) { $loginArg = '-codex-device-login' }
