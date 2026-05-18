@@ -407,8 +407,9 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
         $wrapperPath = Build-WrapperScript
         $scriptIdx = [array]::IndexOf($cliFullArgs, $ScriptPath)
         $cliOnly = if ($scriptIdx -ge 0) { $cliFullArgs[($scriptIdx + 1)..($cliFullArgs.Count - 1)] } else { @() }
-        $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $wrapperPath) + $cliOnly
-        $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -PassThru -NoNewWindow -RedirectStandardOutput $stdout
+        $quotedCli = foreach ($a in @($wrapperPath) + $cliOnly) { if ($a -match '\s') { "`"$a`"" } else { $a } }
+        $cmdArgs = @('/c', 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' + ($quotedCli -join ' ') + " > `"$stdout`" 2>&1")
+        $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList $cmdArgs -PassThru -WindowStyle Hidden
         while (-not $proc.HasExited) {
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 200
