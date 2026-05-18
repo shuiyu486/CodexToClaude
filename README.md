@@ -1,64 +1,76 @@
 # CodexToClaude
 
-> 使Codex Plus/Pro订阅可以在claude code中使用
+> **C**odex + **C**laude **Code** — 把 Codex 订阅变成 Claude Code 可用的模型
 
-CodexToClaude 是一个 Windows 优先的小工具。它通过 CLIProxyAPI 把你的 Codex Plus/Pro OAuth 登录转换成本机 Anthropic-compatible API，让 Claude Code 可以访问本机接口并使用 Codex 模型。
+[![English](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://learn.microsoft.com/en-us/powershell/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-v1.0.0.1-lightgrey.svg)](./VERSION)
+
+CodexToClaude 通过 CLIProxyAPI 把你的 Codex Plus/Pro OAuth 登录转换成本机 Anthropic-compatible API，让 Claude Code 直接使用 Codex 模型。Windows 优先，GUI 一键操作。
 
 ```text
 Claude Code → http://127.0.0.1:<Port> → CLIProxyAPI → Codex OAuth → Codex models
 ```
 
-## 适合谁
+## ✨ 功能
 
-- 已经有 Codex Plus/Pro 订阅。
-- 想在 Claude Code 中使用 Codex 模型。
-- 希望少手动改配置，最好有 GUI 一键操作。
-- 使用 Windows，或者至少能运行 PowerShell。
+- 🖥️ **GUI 一键操作** — 双击 `CodexToClaude-GUI.cmd`，中文/English 界面切换
+- 🧙 **快速开始向导** — Install → Login → Configure → Restart → Verify，每一步都有 CLI 日志
+- 🔐 **OAuth 设备码登录** — 浏览器不方便时，勾选 Device Login 即可
+- 🧪 **端到端验证** — `/v1/models`、`/v1/messages` 和 Claude Code stream-json 自动检查
+- 📦 **版本管理** — GUI 内查看/更新项目和 CLIProxyAPI，无需手动操作
+- 🔄 **自动迁移** — 从旧版 `~\.cli-proxy-api` 自动迁移到项目内目录
 
-## 你需要先知道两个值
+## 📋 前提
 
-安装和测试前必须明确：
+| 条件 | 说明 |
+|------|------|
+| Codex Plus/Pro 订阅 | 需要有效的 Codex OAuth 登录 |
+| 代理地址 | 访问 Codex/OpenAI 上游的代理，直连填 `none` |
+| Windows / PowerShell 5.1+ | 主要运行环境 |
+| [Git for Windows](https://git-scm.com/) | 项目自更新需要 |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | CLI 或 IDE 集成均可 |
+
+安装前你需要明确两个值：
 
 | 名称 | 说明 | 示例 |
-|---|---|---|
-| `Port` | CLIProxyAPI 在本机监听的端口，Claude Code 会访问 `http://127.0.0.1:<Port>` | `8317` |
-| `ProxyUrl` | CLIProxyAPI 访问 Codex/OpenAI 上游时使用的代理 | `http://127.0.0.1:7897` |
+|------|------|------|
+| `Port` | CLIProxyAPI 本机监听端口。Claude Code 访问 `http://127.0.0.1:<Port>` | `8317` |
+| `ProxyUrl` | CLIProxyAPI 访问上游的代理。直连必须显式填 `none` | `http://127.0.0.1:7897` |
 
-如果你的网络可以直连上游，请把 `ProxyUrl` 显式填为：
+> ⚠️ 不要留空 ProxyUrl。留空会让安装后的验证结果不明确。
 
-```text
-none
-```
+## 🚀 推荐方式：GUI
 
-不要留空。留空会让安装后的验证结果不明确。
-
-## 推荐方式：使用 GUI
-
-双击：
+双击即可：
 
 ```text
 CodexToClaude-GUI.cmd
 ```
 
-GUI 支持中文/English 界面切换，并会记住语言选择、上次填写的连接信息和首次向导完成状态。
-
 ![CodexToClaude GUI 快速开始向导](docs/assets/gui-quick-start.png)
 
-首次使用建议按 `Quick start wizard` / `快速开始向导` 操作：
+首次使用按 `Quick start wizard` / `快速开始向导` 顺序执行：
 
-1. 填写 `Port`，例如 `8317`。
-2. 填写 `ProxyUrl`，例如 `http://127.0.0.1:7897`；直连填 `none`。
-3. 依次执行 `Install` → `Login` → `Configure` → `Restart` → `Verify`。
-4. 如果普通登录不方便，勾选 `Use device login` / `使用设备码登录` 后再执行 `Login`。
-5. 确认顶部 `Login status` / `登录状态` 显示已登录。
+1. 填写 `Port`（如 `8317`）和 `ProxyUrl`（如 `http://127.0.0.1:7897`；直连填 `none`）
+2. 依次点击 `Install` → `Login` → `Configure` → `Restart` → `Verify`
+3. 若浏览器登录不便，勾选 `Use device login` / `使用设备码登录` 后再执行 `Login`
+4. 确认顶部状态显示已登录
 
-`Main flow` / `主流程` 保留常用步骤按钮；`Claude models` / `Claude 模型` 直接放在主界面，可修改 Claude Code 使用的 Opus、Sonnet、Haiku 模型名。保存后建议执行 `Restart` 和 `Verify`。
+### 界面布局
 
-`Advanced Management` / `高级管理` 独立窗口用于检查或更新 CodexToClaude 项目和 CLIProxyAPI。项目版本来自仓库根目录 `VERSION`；项目更新只会在 git 工作区干净时执行；CLIProxyAPI 更新会先停止本地服务、替换 exe，再尝试恢复启动。
+| 区域 | 用途 |
+|------|------|
+| `Quick start wizard` | 首次一键配置流程 |
+| `Main flow` | 常用按钮（Install / Login / Configure / Restart / Verify） |
+| `Claude models` | 修改 Opus / Sonnet / Haiku 模型名，保存后建议 Restart + Verify |
+| `Advanced Management` | 项目版本和 CLIProxyAPI 更新（独立窗口） |
+| `Diagnostics` | Start / Stop / Status / Doctor / 刷新登录状态 / 打开目录 |
 
-`Diagnostics` / `诊断工具` 独立窗口提供 `Start`、`Stop`、`Status`、`Doctor`、刷新登录状态和打开目录等低频操作。GUI 会显示当前登录状态，并在登录失败时给出排障建议。
+## 🖥️ CLI 用法
 
-## CLI 用法
+### 首次安装
 
 ```powershell
 .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl "http://127.0.0.1:7897"
@@ -68,71 +80,103 @@ GUI 支持中文/English 界面切换，并会记住语言选择、上次填写�
 .\scripts\CodexToClaude.ps1 verify
 ```
 
-设备码登录：
+### 设备码登录
 
 ```powershell
 .\scripts\CodexToClaude.ps1 login -Device
 ```
 
-直连网络：
+### 直连网络
 
 ```powershell
 .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl none
 .\scripts\CodexToClaude.ps1 configure -Port 8317 -ProxyUrl none
 ```
 
-常用检查：
+### 日常命令
 
 ```powershell
+# 检查状态
 .\scripts\CodexToClaude.ps1 status
 .\scripts\CodexToClaude.ps1 auth-status
+
+# 完整诊断
 .\scripts\CodexToClaude.ps1 doctor
+
+# 启停服务
+.\scripts\CodexToClaude.ps1 restart
+.\scripts\CodexToClaude.ps1 stop
 ```
 
-版本和模型：
+### 版本和模型
 
 ```powershell
+# 查看/更新项目
 .\scripts\CodexToClaude.ps1 project-version
 .\scripts\CodexToClaude.ps1 project-update
+
+# 查看/更新 CLIProxyAPI
 .\scripts\CodexToClaude.ps1 cliproxy-version
 .\scripts\CodexToClaude.ps1 cliproxy-update
+
+# 查看/修改模型
 .\scripts\CodexToClaude.ps1 models
 .\scripts\CodexToClaude.ps1 configure-models -OpusModel "gpt-5.5" -SonnetModel "gpt-5.4" -HaikuModel "gpt-5.4"
 ```
 
-## Login 状态说明
+## 📁 项目结构
 
-`Login` 完成后，程序会检查 `<repo-root>\cli-proxy-api` 根目录下的 OAuth JSON：
+```text
+CodexToClaude/
+├── CodexToClaude-GUI.cmd      ← 双击启动 GUI
+├── scripts/
+│   ├── CodexToClaude.ps1       ← CLI 主脚本（所有业务逻辑）
+│   └── CodexToClaude.UI.ps1    ← WinForms GUI（参数收集 + 步骤编排）
+├── test/
+│   └── Test-CodexToClaude.ps1  ← 自动化测试
+├── docs/
+│   ├── project-guide.md        ← 维护说明（给 Claude Code 看）
+│   ├── claude-code-setup.md    ← 新机器自动配置
+│   └── 手动安装与使用.md        ← 不用 CodexToClaude 工具的手动方式
+├── cli-proxy-api/              ← CLIProxyAPI 安装目录（git 排除）
+├── VERSION                     ← 版本号唯一真源
+├── README.md
+└── CLAUDE.local.md             ← 项目本地指令
+```
 
-- 是否存在 auth JSON。
-- 是否为 `type=codex`。
-- 是否没有 `disabled=true`。
-- 是否能识别邮箱和过期时间。
+## 🔐 Login 状态
 
-不会打印 `access_token`、`refresh_token`、`id_token`。
+`Login` 完成后会检查 `<repo-root>\cli-proxy-api` 下的 OAuth JSON：
 
-如果登录失败，优先尝试：
+- 是否存在 auth JSON
+- 是否为 `type=codex`
+- 是否没有 `disabled=true`
+- 是否能识别邮箱和过期时间
 
-1. 确认代理可用，并重新运行 `install/configure -ProxyUrl ...`。
-2. 改用设备码登录：`.\scripts\CodexToClaude.ps1 login -Device`。
-3. 确认 OAuth JSON 位于 `<repo-root>\cli-proxy-api` 根目录，不在嵌套子目录。
-4. 确认 JSON 中 `type` 为 `codex`，且没有 `disabled: true`。
-5. 查看 `<repo-root>\cli-proxy-api\logs\main.log`。
+**不会打印** `access_token`、`refresh_token`、`id_token`。
 
-## 它会改哪些文件
+### 登录失败？
+
+1. 确认代理可用，重新运行 `install/configure -ProxyUrl ...`
+2. 改用设备码登录：`login -Device`
+3. 确认 OAuth JSON 在 `<repo-root>\cli-proxy-api` 根目录（不在嵌套子目录）
+4. 确认 JSON 中 `type=codex` 且没有 `disabled: true`
+5. 查看 `<repo-root>\cli-proxy-api\logs\main.log`
+
+## 📝 它会改哪些文件
 
 | 文件 | 用途 |
-|---|---|
+|------|------|
 | `<repo-root>\cli-proxy-api\config.yaml` | CLIProxyAPI 运行配置 |
 | `<repo-root>\cli-proxy-api\cli-proxy-api.exe` | CLIProxyAPI 可执行文件 |
 | `<repo-root>\cli-proxy-api\codex-*.json` | Codex OAuth 登录文件 |
-| `~/.claude/settings.json` | Claude Code 访问本机代理的配置 |
+| `~/.claude/settings.json` | Claude Code 访问本机代理的 env 配置 |
 
-`settings.json` 会被合并更新，只替换 Claude Code 使用本地代理所需的 `env` 字段，不会覆盖 `statusLine`、`permissions` 等其它配置。
+`settings.json` 只合并更新 `env` 字段，**不会覆盖** `statusLine`、`permissions`、`language` 等现有配置。
 
-## 关于 thinking 输出
+## 💭 关于 thinking 输出
 
-CodexToClaude 默认在 CLIProxyAPI config 中写入：
+CodexToClaude 默认在 CLIProxyAPI config 中写入 payload 过滤：
 
 ```yaml
 payload:
@@ -145,47 +189,46 @@ payload:
         - "reasoning.effort"
 ```
 
-原因是 Claude Code TUI 在显示 Codex thinking 流时，中文片段可能出现重复字符。过滤 reasoning 后，正常回答文本不受影响。
+Claude Code TUI 显示 Codex thinking 流时，中文片段可能出现重复字符。过滤 `reasoning` 后，正常回答文本不受影响。
 
-## 参考项目
+## 🔗 参考项目
 
-CodexToClaude 基于 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 构建。CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换；CodexToClaude 提供 Windows 友好的安装、配置、启动、诊断、更新和 GUI 编排。
+CodexToClaude 基于 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 构建。
 
-CLIProxyAPI 手动更新方式：打开 [CLIProxyAPI releases](https://github.com/router-for-me/CLIProxyAPI/releases)，下载 Windows x64 / amd64 版本，停止本地服务后把 `cli-proxy-api.exe` 替换到 `<repo-root>\cli-proxy-api\cli-proxy-api.exe`，再运行 `restart` 和 `verify`。
+- CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 的代理转换
+- CodexToClaude 提供 Windows 友好的安装、配置、启动、诊断、更新和 GUI 编排
 
-## 安全说明
+CLIProxyAPI 手动更新：打开 [Releases](https://github.com/router-for-me/CLIProxyAPI/releases)，下载 Windows x64 / amd64 版本，停止服务后替换 `<repo-root>\cli-proxy-api\cli-proxy-api.exe`，再 `restart` + `verify`。
 
-不要提交：
+## 🛡️ 安全
 
-- Codex OAuth JSON。
-- `access_token`、`refresh_token`、`id_token`。
-- 真实 API key。
-- 日志文件。
+禁止提交以下内容：
 
-仓库 `.gitignore` 已排除常见敏感文件，但提交前仍应检查：
+- Codex OAuth JSON
+- `access_token`、`refresh_token`、`id_token`
+- 真实 API key
+- 日志文件
+
+`.gitignore` 已排除常见敏感文件，提交前仍应检查：
 
 ```powershell
 git status
 git diff
 ```
 
-## 开发与维护
-
-运行测试：
+## 🧪 开发
 
 ```powershell
+# 运行测试
 .\test\Test-CodexToClaude.ps1
-```
 
-真实环境验收：
-
-```powershell
+# 真实环境验收
 .\scripts\CodexToClaude.ps1 restart
 .\scripts\CodexToClaude.ps1 verify
 ```
 
-详细项目维护说明见：
+详细维护说明见 [`docs/project-guide.md`](docs/project-guide.md)。
 
-```text
-docs/project-guide.md
-```
+## 📄 License
+
+MIT License
