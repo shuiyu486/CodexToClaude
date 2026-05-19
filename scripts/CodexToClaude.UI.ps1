@@ -11,14 +11,22 @@ $ScriptPath = Join-Path $PSScriptRoot 'CodexToClaude.ps1'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $VersionPath = Join-Path $RepoRoot 'VERSION'
 $DefaultInstallDir = Join-Path $RepoRoot 'cli-proxy-api'
+$DefaultOccInstallDir = Join-Path $RepoRoot 'oc-go-cc'
 $DefaultSettingsPath = Join-Path $env:USERPROFILE '.claude\settings.json'
 $PrefsDir = Join-Path $env:USERPROFILE '.codextoclaude'
 $PrefsPath = Join-Path $PrefsDir 'ui-preferences.json'
 $script:CurrentLanguage = 'en-US'
+$script:CurrentProvider = 'cliproxy'
 $script:WizardCompleted = $false
 $script:WizardStepLabels = @{}
+$script:WizardStepButtons = @{}
 $script:TextBindings = @()
 $script:ApplyingLanguage = $false
+
+$script:ProviderMeta = @{
+    cliproxy = @{ Name = 'CLIProxyAPI'; DefaultPort = '8317'; ExeName = 'cli-proxy-api.exe'; ConfigFile = 'config.yaml'; InstallDirName = 'cli-proxy-api'; SupportsLogin = $true }
+    occ = @{ Name = 'oc-go-cc'; DefaultPort = '3456'; ExeName = 'oc-go-cc.exe'; ConfigFile = 'config.json'; InstallDirName = 'oc-go-cc'; SupportsLogin = $false }
+}
 
 $I18N = @{
     'en-US' = @{
@@ -44,7 +52,8 @@ $I18N = @{
         'wizard.title' = 'Quick start wizard'
         'wizard.description' = 'Follow these steps for first-time setup. Each step calls the same CLI command shown in the log.'
         'wizard.completed' = 'Quick start wizard - completed'
-        'wizard.step.install' = '1. Install CLIProxyAPI config'
+        'wizard.step.install' = '1. Install Codex proxy'
+        'wizard.step.installOcc' = '1. Install OpenCode Go'
         'wizard.step.login' = '2. Login to Codex'
         'wizard.step.configure' = '3. Configure Claude Code'
         'wizard.step.restart' = '4. Restart local service'
@@ -97,6 +106,12 @@ $I18N = @{
         'log.loginHelp3' = '3. Make sure Codex OAuth JSON is in the cli-proxy-api folder (inside the CodexToClaude project).'
         'log.loginHelp4' = '4. Make sure JSON has type=codex and disabled is not true.'
         'log.loginHelp5' = '5. Check the cli-proxy-api/logs/main.log file in the CodexToClaude project.'
+        'provider.label' = 'Model Source'
+        'provider.cliproxy' = 'Codex'
+        'provider.occ' = 'OpenCode Go'
+        'field.ocPort' = 'OC Port'
+        'field.ocApiKey' = 'OC API Key'
+        'hint.ocApiKey' = 'Set OC_GO_CC_API_KEY env var for OpenCode Go.'
     }
     'zh-CN' = @{
         'app.title' = 'CodexToClaude'
@@ -121,7 +136,8 @@ $I18N = @{
         'wizard.title' = '快速开始向导'
         'wizard.description' = '首次使用按顺序执行这些步骤。每一步都会调用日志中显示的同一个 CLI 命令。'
         'wizard.completed' = '快速开始向导 - 已完成'
-        'wizard.step.install' = '1. 安装 CLIProxyAPI 配置'
+        'wizard.step.install' = '1. 安装 Codex 代理'
+        'wizard.step.installOcc' = '1. 安装 OpenCode Go'
         'wizard.step.login' = '2. 登录 Codex'
         'wizard.step.configure' = '3. 配置 Claude Code'
         'wizard.step.restart' = '4. 重启本地服务'
@@ -174,6 +190,12 @@ $I18N = @{
         'log.loginHelp3' = '3. 确认 Codex OAuth JSON 位于 CodexToClaude 项目内的 cli-proxy-api 目录。'
         'log.loginHelp4' = '4. 确认 JSON 中 type=codex 且 disabled 不是 true。'
         'log.loginHelp5' = '5. 查看 CodexToClaude 项目内 cli-proxy-api/logs/main.log 日志。'
+        'provider.label' = '模型来源'
+        'provider.cliproxy' = 'Codex'
+        'provider.occ' = 'OpenCode Go'
+        'field.ocPort' = 'OC 端口'
+        'field.ocApiKey' = 'OC API Key'
+        'hint.ocApiKey' = '通过环境变量 OC_GO_CC_API_KEY 设置 OpenCode Go API key。'
     }
 }
 
@@ -200,18 +222,19 @@ function Get-ProjectVersion {
 
 function New-DefaultPreferences {
     return @{
-        schemaVersion = 1
+        schemaVersion = 2
         language = Get-DefaultLanguage
         firstRunCompleted = $false
+        selectedProvider = 'cliproxy'
         lastValues = @{
-            port = '8317'
+            port = @{ cliproxy = '8317'; occ = '3456' }
             proxyUrl = 'http://127.0.0.1:7897'
             apiKey = ''
-            installDir = $DefaultInstallDir
+            installDir = @{ cliproxy = $DefaultInstallDir; occ = $DefaultOccInstallDir }
             claudeSettingsPath = $DefaultSettingsPath
-            opusModel = 'gpt-5.5'
-            sonnetModel = 'gpt-5.4'
-            haikuModel = 'gpt-5.4'
+            opusModel = @{ cliproxy = 'gpt-5.5'; occ = 'claude-opus-4-5' }
+            sonnetModel = @{ cliproxy = 'gpt-5.4'; occ = 'claude-sonnet-4-6' }
+            haikuModel = @{ cliproxy = 'gpt-5.4'; occ = 'claude-haiku-4-5' }
             useDeviceLogin = $false
             skipStreamCheck = $false
         }
@@ -225,6 +248,27 @@ function Get-ObjectProperty([object]$Object, [string]$Name, [object]$Fallback) {
     return $Fallback
 }
 
+function Repair-CorruptedValue($value, $defaultValue) {
+    if ($value -is [string] -and $value -eq 'System.Collections.Hashtable') { return $defaultValue }
+    return $value
+}
+
+function Load-PerProviderValue($storage, $key, $provider, $defaultValue) {
+    if ($null -eq $storage) { return $defaultValue }
+    $val = Get-ObjectProperty $storage $key $null
+    if ($null -eq $val) { return $defaultValue }
+    if ($val -is [string]) {
+        return (Repair-CorruptedValue $val $defaultValue)
+    }
+    return (Repair-CorruptedValue (Get-ObjectProperty $val $provider $defaultValue) $defaultValue)
+}
+
+function Clean-InstallDir($dir, $defaultDir) {
+    if ($dir -match '^[A-Za-z]:\\Users\\Demo\\') { return $defaultDir }
+    if ($dir -eq (Join-Path $env:USERPROFILE '.cli-proxy-api')) { return $defaultDir }
+    return $dir
+}
+
 function Load-UiPreferences {
     $defaults = New-DefaultPreferences
     if (-not (Test-Path $PrefsPath)) { return $defaults }
@@ -232,20 +276,28 @@ function Load-UiPreferences {
         $raw = Get-Content $PrefsPath -Raw -Encoding UTF8
         $loaded = $raw | ConvertFrom-Json
         $last = Get-ObjectProperty $loaded 'lastValues' $null
+        $schemaVer = [int](Get-ObjectProperty $loaded 'schemaVersion' 1)
         $defaults.language = Get-ObjectProperty $loaded 'language' $defaults.language
         if ($defaults.language -notin @('zh-CN', 'en-US')) { $defaults.language = Get-DefaultLanguage }
         $defaults.firstRunCompleted = [bool](Get-ObjectProperty $loaded 'firstRunCompleted' $defaults.firstRunCompleted)
-        $defaults.lastValues.port = [string](Get-ObjectProperty $last 'port' $defaults.lastValues.port)
+        $defaults.selectedProvider = Get-ObjectProperty $loaded 'selectedProvider' 'cliproxy'
+        if ($defaults.selectedProvider -notin @('cliproxy', 'occ')) { $defaults.selectedProvider = 'cliproxy' }
+        $prov = $defaults.selectedProvider
+
+        $defaults.lastValues.port.cliproxy = Load-PerProviderValue $last 'port' 'cliproxy' $defaults.lastValues.port.cliproxy
+        $defaults.lastValues.port.occ = Load-PerProviderValue $last 'port' 'occ' $defaults.lastValues.port.occ
         $defaults.lastValues.proxyUrl = [string](Get-ObjectProperty $last 'proxyUrl' $defaults.lastValues.proxyUrl)
-        $defaults.lastValues.installDir = [string](Get-ObjectProperty $last 'installDir' $defaults.lastValues.installDir)
+        $defaults.lastValues.installDir.cliproxy = Clean-InstallDir (Load-PerProviderValue $last 'installDir' 'cliproxy' $defaults.lastValues.installDir.cliproxy) $defaults.lastValues.installDir.cliproxy
+        $defaults.lastValues.installDir.occ = Clean-InstallDir (Load-PerProviderValue $last 'installDir' 'occ' $defaults.lastValues.installDir.occ) $defaults.lastValues.installDir.occ
         $defaults.lastValues.claudeSettingsPath = [string](Get-ObjectProperty $last 'claudeSettingsPath' $defaults.lastValues.claudeSettingsPath)
-        $defaults.lastValues.opusModel = [string](Get-ObjectProperty $last 'opusModel' $defaults.lastValues.opusModel)
-        $defaults.lastValues.sonnetModel = [string](Get-ObjectProperty $last 'sonnetModel' $defaults.lastValues.sonnetModel)
-        $defaults.lastValues.haikuModel = [string](Get-ObjectProperty $last 'haikuModel' $defaults.lastValues.haikuModel)
+        $defaults.lastValues.opusModel.cliproxy = Load-PerProviderValue $last 'opusModel' 'cliproxy' $defaults.lastValues.opusModel.cliproxy
+        $defaults.lastValues.opusModel.occ = Load-PerProviderValue $last 'opusModel' 'occ' $defaults.lastValues.opusModel.occ
+        $defaults.lastValues.sonnetModel.cliproxy = Load-PerProviderValue $last 'sonnetModel' 'cliproxy' $defaults.lastValues.sonnetModel.cliproxy
+        $defaults.lastValues.sonnetModel.occ = Load-PerProviderValue $last 'sonnetModel' 'occ' $defaults.lastValues.sonnetModel.occ
+        $defaults.lastValues.haikuModel.cliproxy = Load-PerProviderValue $last 'haikuModel' 'cliproxy' $defaults.lastValues.haikuModel.cliproxy
+        $defaults.lastValues.haikuModel.occ = Load-PerProviderValue $last 'haikuModel' 'occ' $defaults.lastValues.haikuModel.occ
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
-        if ($defaults.lastValues.installDir -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.installDir = $DefaultInstallDir }
-        if ($defaults.lastValues.installDir -eq (Join-Path $env:USERPROFILE '.cli-proxy-api')) { $defaults.lastValues.installDir = $DefaultInstallDir }
         if ($defaults.lastValues.claudeSettingsPath -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.claudeSettingsPath = $DefaultSettingsPath }
         return $defaults
     } catch {
@@ -258,14 +310,15 @@ function Save-UiPreferences {
     if (-not (Test-Path $PrefsDir)) { New-Item -ItemType Directory -Force $PrefsDir | Out-Null }
     $script:Prefs.language = $script:CurrentLanguage
     $script:Prefs.firstRunCompleted = $script:WizardCompleted
-    $script:Prefs.lastValues.port = $portBox.Text.Trim()
+    $script:Prefs.selectedProvider = $script:CurrentProvider
+    $script:Prefs.lastValues.port[$script:CurrentProvider] = $portBox.Text.Trim()
     $script:Prefs.lastValues.proxyUrl = $proxyBox.Text.Trim()
     $script:Prefs.lastValues.apiKey = ''
-    $script:Prefs.lastValues.installDir = $installDirBox.Text.Trim()
+    $script:Prefs.lastValues.installDir[$script:CurrentProvider] = $installDirBox.Text.Trim()
     $script:Prefs.lastValues.claudeSettingsPath = $settingsPathBox.Text.Trim()
-    $script:Prefs.lastValues.opusModel = $opusModelBox.Text.Trim()
-    $script:Prefs.lastValues.sonnetModel = $sonnetModelBox.Text.Trim()
-    $script:Prefs.lastValues.haikuModel = $haikuModelBox.Text.Trim()
+    $script:Prefs.lastValues.opusModel[$script:CurrentProvider] = $opusModelBox.Text.Trim()
+    $script:Prefs.lastValues.sonnetModel[$script:CurrentProvider] = $sonnetModelBox.Text.Trim()
+    $script:Prefs.lastValues.haikuModel[$script:CurrentProvider] = $haikuModelBox.Text.Trim()
     $script:Prefs.lastValues.useDeviceLogin = [bool]$deviceCheck.Checked
     $script:Prefs.lastValues.skipStreamCheck = [bool]$skipStreamCheck.Checked
     $json = $script:Prefs | ConvertTo-Json -Depth 6
@@ -288,24 +341,31 @@ function Apply-Language {
     $script:ApplyingLanguage = $true
     try {
         foreach ($binding in $script:TextBindings) {
-            $binding.Control.Text = T $binding.Key
+            [void]($binding.Control.Text = T $binding.Key)
         }
         $versionTitle = "$(T 'app.title') $(Get-ProjectVersion)"
-        $form.Text = $versionTitle
-        $title.Text = $versionTitle
+        [void]($form.Text = $versionTitle)
+        [void]($title.Text = $versionTitle)
         $zhItem = T 'language.zh'
         $enItem = T 'language.en'
-        $languageBox.Items.Clear()
+        [void]$languageBox.Items.Clear()
         [void]$languageBox.Items.Add($zhItem)
         [void]$languageBox.Items.Add($enItem)
-        if ($script:CurrentLanguage -eq 'zh-CN') { $languageBox.SelectedItem = $zhItem } else { $languageBox.SelectedItem = $enItem }
+        if ($script:CurrentLanguage -eq 'zh-CN') { [void]($languageBox.SelectedItem = $zhItem) } else { [void]($languageBox.SelectedItem = $enItem) }
+
+        [void]($btnCliproxy.Text = (T 'provider.cliproxy'))
+        [void]($btnOcc.Text = (T 'provider.occ'))
+        [void]($providerGroup.Text = (T 'provider.label'))
+        Update-ProviderButtons
         Update-WizardTitle
         foreach ($step in $WizardSteps) {
             if ($script:WizardStepLabels.ContainsKey($step.Id)) {
-                $script:WizardStepLabels[$step.Id].Tag = T $step.TextKey
+                $textKey = Get-WizardStepTextKey $step.Id
+                [void]($script:WizardStepLabels[$step.Id].Tag = T $textKey)
             }
             Set-WizardStepState $step.Id 'pending'
         }
+        Layout-WizardSteps
     } finally {
         $script:ApplyingLanguage = $false
     }
@@ -346,14 +406,17 @@ function Show-Message([string]$MessageKey, [string]$TitleKey) {
 }
 
 function Validate-Inputs([bool]$RequireProxy) {
-    if ($portBox.Text.Trim() -notmatch '^\d+$') {
+    $portText = $portBox.Text.Trim()
+    if ($portText -ne '' -and $portText -notmatch '^\d+$') {
         Show-Message 'dialog.invalidPortNumber' 'dialog.invalidPortTitle'
         return $false
     }
-    $p = [int]$portBox.Text.Trim()
-    if ($p -lt 1 -or $p -gt 65535) {
-        Show-Message 'dialog.invalidPortRange' 'dialog.invalidPortTitle'
-        return $false
+    if ($portText -ne '') {
+        $p = [int]$portText
+        if ($p -lt 1 -or $p -gt 65535) {
+            Show-Message 'dialog.invalidPortRange' 'dialog.invalidPortTitle'
+            return $false
+        }
     }
     if ($RequireProxy) {
         $proxy = $proxyBox.Text.Trim()
@@ -370,18 +433,19 @@ function Validate-Inputs([bool]$RequireProxy) {
 }
 
 function Build-Args([string]$Command, [bool]$NeedPortProxy) {
-    $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, $Command)
-    if ($NeedPortProxy -or $portBox.Text.Trim() -ne '') { $args += @('-Port', $portBox.Text.Trim()) }
-    if ($NeedPortProxy -or $proxyBox.Text.Trim() -ne '') { $args += @('-ProxyUrl', $proxyBox.Text.Trim()) }
-    if ($apiKeyBox.Text.Trim() -ne '') { $args += @('-ApiKey', $apiKeyBox.Text.Trim()) }
-    if ($installDirBox.Text.Trim() -ne '') { $args += @('-InstallDir', $installDirBox.Text.Trim()) }
-    if ($settingsPathBox.Text.Trim() -ne '') { $args += @('-ClaudeSettingsPath', $settingsPathBox.Text.Trim()) }
-    if ($opusModelBox.Text.Trim() -ne '') { $args += @('-OpusModel', $opusModelBox.Text.Trim()) }
-    if ($sonnetModelBox.Text.Trim() -ne '') { $args += @('-SonnetModel', $sonnetModelBox.Text.Trim()) }
-    if ($haikuModelBox.Text.Trim() -ne '') { $args += @('-HaikuModel', $haikuModelBox.Text.Trim()) }
-    if ($deviceCheck.Checked -and $Command -eq 'login') { $args += '-Device' }
-    if ($skipStreamCheck.Checked) { $args += '-SkipClaudeStreamCheck' }
-    return $args
+    $cliArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, $Command)
+    $cliArgs += @('-Provider', $script:CurrentProvider)
+    if ($NeedPortProxy -or $portBox.Text.Trim() -ne '') { $cliArgs += @('-Port', $portBox.Text.Trim()) }
+    if ($NeedPortProxy -or $proxyBox.Text.Trim() -ne '') { $cliArgs += @('-ProxyUrl', $proxyBox.Text.Trim()) }
+    if ($apiKeyBox.Text.Trim() -ne '') { $cliArgs += @('-ApiKey', $apiKeyBox.Text.Trim()) }
+    if ($installDirBox.Text.Trim() -ne '') { $cliArgs += @('-InstallDir', $installDirBox.Text.Trim()) }
+    if ($settingsPathBox.Text.Trim() -ne '') { $cliArgs += @('-ClaudeSettingsPath', $settingsPathBox.Text.Trim()) }
+    if ($opusModelBox.Text.Trim() -ne '') { $cliArgs += @('-OpusModel', $opusModelBox.Text.Trim()) }
+    if ($sonnetModelBox.Text.Trim() -ne '') { $cliArgs += @('-SonnetModel', $sonnetModelBox.Text.Trim()) }
+    if ($haikuModelBox.Text.Trim() -ne '') { $cliArgs += @('-HaikuModel', $haikuModelBox.Text.Trim()) }
+    if ($deviceCheck.Checked -and $Command -eq 'login') { $cliArgs += '-Device' }
+    if ($skipStreamCheck.Checked) { $cliArgs += '-SkipClaudeStreamCheck' }
+    return $cliArgs
 }
 
 function Build-WrapperScript {
@@ -444,41 +508,41 @@ function Refresh-AuthStatus {
     $stdout = Join-Path $env:TEMP "ctc-ui-auth-$([guid]::NewGuid().ToString()).json"
     $stderr = Join-Path $env:TEMP "ctc-ui-auth-$([guid]::NewGuid().ToString()).err"
     try {
-        $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, 'auth-status', '-Json')
-        if ($installDirBox.Text.Trim() -ne '') { $args += @('-InstallDir', $installDirBox.Text.Trim()) }
-        $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $authArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, 'auth-status', '-Provider', $script:CurrentProvider, '-Json')
+        if ($installDirBox.Text.Trim() -ne '') { $authArgs += @('-InstallDir', $installDirBox.Text.Trim()) }
+        $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $authArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
         $raw = ''
         if (Test-Path $stdout) { $raw = Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
         if ($raw) {
             $status = $raw | ConvertFrom-Json
-            $loginStatusLabel.Text = (T 'status.prefix') + $status.message
-            if ($status.status -eq 'logged_in') { $loginStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen }
-            else { $loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange }
+            [void]($loginStatusLabel.Text = (T 'status.prefix') + $status.message)
+            if ($status.status -eq 'logged_in' -or $status.status -eq 'configured') { [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen) }
+            else { [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange) }
         } else {
-            $loginStatusLabel.Text = T 'status.unable'
-            $loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange
+            [void]($loginStatusLabel.Text = T 'status.unable')
+            [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange)
         }
     } catch {
-        $loginStatusLabel.Text = T 'status.failed'
-        $loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkRed
+        [void]($loginStatusLabel.Text = T 'status.failed')
+        [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkRed)
     } finally {
         Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
     }
 }
 
 function Update-WizardTitle {
-    if ($script:WizardCompleted) { $wizardGroup.Text = T 'wizard.completed' } else { $wizardGroup.Text = T 'wizard.title' }
+    if ($script:WizardCompleted) { [void]($wizardGroup.Text = T 'wizard.completed') } else { [void]($wizardGroup.Text = T 'wizard.title') }
 }
 
 function Set-WizardStepState([string]$StepId, [string]$State) {
     if (-not $script:WizardStepLabels.ContainsKey($StepId)) { return }
     $label = $script:WizardStepLabels[$StepId]
     $stateText = T "wizard.$State"
-    $label.Text = "$($label.Tag)  [$stateText]"
-    if ($State -eq 'done') { $label.ForeColor = [System.Drawing.Color]::ForestGreen }
-    elseif ($State -eq 'failed') { $label.ForeColor = [System.Drawing.Color]::DarkRed }
-    elseif ($State -eq 'running') { $label.ForeColor = [System.Drawing.Color]::RoyalBlue }
-    else { $label.ForeColor = [System.Drawing.Color]::DimGray }
+    [void]($label.Text = "$($label.Tag)  [$stateText]")
+    if ($State -eq 'done') { [void]($label.ForeColor = [System.Drawing.Color]::ForestGreen) }
+    elseif ($State -eq 'failed') { [void]($label.ForeColor = [System.Drawing.Color]::DarkRed) }
+    elseif ($State -eq 'running') { [void]($label.ForeColor = [System.Drawing.Color]::RoyalBlue) }
+    else { [void]($label.ForeColor = [System.Drawing.Color]::DimGray) }
 }
 
 function Invoke-WizardStep([hashtable]$Step) {
@@ -573,11 +637,12 @@ function Show-DiagnosticsWindow {
 
 $script:Prefs = Load-UiPreferences
 $script:CurrentLanguage = $script:Prefs.language
+$script:CurrentProvider = $script:Prefs.selectedProvider
 $script:WizardCompleted = [bool]$script:Prefs.firstRunCompleted
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "$(T 'app.title') $(Get-ProjectVersion)"
-$form.Size = New-Object System.Drawing.Size(980, 815)
+$form.Size = New-Object System.Drawing.Size(980, 850)
 $form.StartPosition = 'CenterScreen'
 $form.SuspendLayout()
 
@@ -603,9 +668,54 @@ $form.Controls.Add($languageBox)
 $loginStatusLabel = New-Label (T 'status.checking') 16 48 920 24
 $form.Controls.Add($loginStatusLabel)
 
+# Provider (model source) selector - prominent GroupBox
+$providerGroup = New-Object System.Windows.Forms.GroupBox
+$providerGroup.Text = (T 'provider.label')
+$providerGroup.Location = New-Object System.Drawing.Point(16, 76)
+$providerGroup.Size = New-Object System.Drawing.Size(930, 48)
+$providerGroup.SuspendLayout()
+$form.Controls.Add($providerGroup)
+
+$btnCliproxy = New-Object System.Windows.Forms.Button
+$btnCliproxy.Text = (T 'provider.cliproxy')
+$btnCliproxy.Location = New-Object System.Drawing.Point(14, 16)
+$btnCliproxy.Size = New-Object System.Drawing.Size(440, 24)
+$btnCliproxy.FlatStyle = 'Flat'
+$btnCliproxy.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$providerGroup.Controls.Add($btnCliproxy)
+
+$btnOcc = New-Object System.Windows.Forms.Button
+$btnOcc.Text = (T 'provider.occ')
+$btnOcc.Location = New-Object System.Drawing.Point(470, 16)
+$btnOcc.Size = New-Object System.Drawing.Size(440, 24)
+$btnOcc.FlatStyle = 'Flat'
+$btnOcc.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+$providerGroup.Controls.Add($btnOcc)
+
+function Update-ProviderButtons {
+    if ($script:CurrentProvider -eq 'occ') {
+        [void]($btnOcc.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold))
+        [void]($btnOcc.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 212))
+        [void]($btnOcc.ForeColor = [System.Drawing.Color]::White)
+        [void]($btnCliproxy.Font = New-Object System.Drawing.Font('Segoe UI', 10))
+        [void]($btnCliproxy.BackColor = [System.Drawing.SystemColors]::Control)
+        [void]($btnCliproxy.ForeColor = [System.Drawing.SystemColors]::ControlText)
+    } else {
+        [void]($btnCliproxy.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold))
+        [void]($btnCliproxy.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 212))
+        [void]($btnCliproxy.ForeColor = [System.Drawing.Color]::White)
+        [void]($btnOcc.Font = New-Object System.Drawing.Font('Segoe UI', 10))
+        [void]($btnOcc.BackColor = [System.Drawing.SystemColors]::Control)
+        [void]($btnOcc.ForeColor = [System.Drawing.SystemColors]::ControlText)
+    }
+}
+
+$btnCliproxy.Add_Click({ Switch-Provider 'cliproxy' })
+$btnOcc.Add_Click({ Switch-Provider 'occ' })
+
 $settingsGroup = New-Object System.Windows.Forms.GroupBox
 $settingsGroup.Text = T 'settings.title'
-$settingsGroup.Location = New-Object System.Drawing.Point(16, 80)
+$settingsGroup.Location = New-Object System.Drawing.Point(16, 135)
 $settingsGroup.Size = New-Object System.Drawing.Size(930, 205)
 $settingsGroup.SuspendLayout()
 Register-Text $settingsGroup 'settings.title'
@@ -613,7 +723,7 @@ $form.Controls.Add($settingsGroup)
 
 $settingsGroup.Controls.Add((New-Label (T 'field.port') 14 30 120 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.port'
-$portBox = New-TextBox $script:Prefs.lastValues.port 140 26 120
+$portBox = New-TextBox ($script:Prefs.lastValues.port[$script:CurrentProvider]) 140 26 120
 $settingsGroup.Controls.Add($portBox)
 $portHint = New-Label (T 'hint.port') 275 30 630 22
 $portHint.ForeColor = [System.Drawing.Color]::DimGray
@@ -636,7 +746,7 @@ $settingsGroup.Controls.Add($apiKeyBox)
 
 $settingsGroup.Controls.Add((New-Label (T 'field.installDir') 14 132 120 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.installDir'
-$installDirBox = New-TextBox $script:Prefs.lastValues.installDir 140 128 540
+$installDirBox = New-TextBox ($script:Prefs.lastValues.installDir[$script:CurrentProvider]) 140 128 540
 $settingsGroup.Controls.Add($installDirBox)
 
 $settingsGroup.Controls.Add((New-Label (T 'field.settings') 14 166 120 22))
@@ -661,7 +771,7 @@ Register-Text $skipStreamCheck 'check.skipStream'
 $settingsGroup.Controls.Add($skipStreamCheck)
 
 $wizardGroup = New-Object System.Windows.Forms.GroupBox
-$wizardGroup.Location = New-Object System.Drawing.Point(16, 300)
+$wizardGroup.Location = New-Object System.Drawing.Point(16, 355)
 $wizardGroup.Size = New-Object System.Drawing.Size(455, 215)
 $wizardGroup.SuspendLayout()
 Register-Text $wizardGroup 'wizard.title'
@@ -674,8 +784,13 @@ $wizardGroup.Controls.Add($wizardDescription)
 
 $wizardY = 70
 foreach ($step in $WizardSteps) {
-    $stepLabel = New-Label (T $step.TextKey) 18 $wizardY 295 24
-    $stepLabel.Tag = T $step.TextKey
+    if ($step.Id -eq 'install' -and $script:CurrentProvider -eq 'occ') {
+        $stepTextKey = 'wizard.step.installOcc'
+    } else {
+        $stepTextKey = "wizard.step.$($step.Id)"
+    }
+    $stepLabel = New-Label (T $stepTextKey) 18 $wizardY 295 24
+    $stepLabel.Tag = T $stepTextKey
     $script:WizardStepLabels[$step.Id] = $stepLabel
     $wizardGroup.Controls.Add($stepLabel)
 
@@ -684,12 +799,13 @@ foreach ($step in $WizardSteps) {
     $stepForClick = $step
     $runButton.Add_Click({ Invoke-WizardStep $stepForClick }.GetNewClosure())
     $wizardGroup.Controls.Add($runButton)
+    $script:WizardStepButtons[$step.Id] = $runButton
     $wizardY += 28
 }
 
 $mainGroup = New-Object System.Windows.Forms.GroupBox
 $mainGroup.Text = T 'main.title'
-$mainGroup.Location = New-Object System.Drawing.Point(490, 300)
+$mainGroup.Location = New-Object System.Drawing.Point(490, 355)
 $mainGroup.Size = New-Object System.Drawing.Size(455, 100)
 $mainGroup.SuspendLayout()
 Register-Text $mainGroup 'main.title'
@@ -713,7 +829,7 @@ foreach ($b in $mainButtons) {
 
 $modelsGroup = New-Object System.Windows.Forms.GroupBox
 $modelsGroup.Text = T 'models.title'
-$modelsGroup.Location = New-Object System.Drawing.Point(490, 415)
+$modelsGroup.Location = New-Object System.Drawing.Point(490, 470)
 $modelsGroup.Size = New-Object System.Drawing.Size(455, 170)
 $modelsGroup.SuspendLayout()
 Register-Text $modelsGroup 'models.title'
@@ -721,17 +837,17 @@ $form.Controls.Add($modelsGroup)
 
 $modelsGroup.Controls.Add((New-Label (T 'field.opusModel') 14 30 90 22))
 Register-Text $modelsGroup.Controls[$modelsGroup.Controls.Count - 1] 'field.opusModel'
-$opusModelBox = New-TextBox $script:Prefs.lastValues.opusModel 110 26 220
+$opusModelBox = New-TextBox ($script:Prefs.lastValues.opusModel[$script:CurrentProvider]) 110 26 220
 $modelsGroup.Controls.Add($opusModelBox)
 
 $modelsGroup.Controls.Add((New-Label (T 'field.sonnetModel') 14 64 90 22))
 Register-Text $modelsGroup.Controls[$modelsGroup.Controls.Count - 1] 'field.sonnetModel'
-$sonnetModelBox = New-TextBox $script:Prefs.lastValues.sonnetModel 110 60 220
+$sonnetModelBox = New-TextBox ($script:Prefs.lastValues.sonnetModel[$script:CurrentProvider]) 110 60 220
 $modelsGroup.Controls.Add($sonnetModelBox)
 
 $modelsGroup.Controls.Add((New-Label (T 'field.haikuModel') 14 98 90 22))
 Register-Text $modelsGroup.Controls[$modelsGroup.Controls.Count - 1] 'field.haikuModel'
-$haikuModelBox = New-TextBox $script:Prefs.lastValues.haikuModel 110 94 220
+$haikuModelBox = New-TextBox ($script:Prefs.lastValues.haikuModel[$script:CurrentProvider]) 110 94 220
 $modelsGroup.Controls.Add($haikuModelBox)
 
 $readModelsBtn = New-Button (T 'btn.models') 345 43 90
@@ -746,7 +862,7 @@ $modelsGroup.Controls.Add($saveModelsBtn)
 
 $toolsGroup = New-Object System.Windows.Forms.GroupBox
 $toolsGroup.Text = T 'advanced.title'
-$toolsGroup.Location = New-Object System.Drawing.Point(16, 530)
+$toolsGroup.Location = New-Object System.Drawing.Point(16, 585)
 $toolsGroup.Size = New-Object System.Drawing.Size(455, 55)
 $toolsGroup.SuspendLayout()
 Register-Text $toolsGroup 'advanced.title'
@@ -764,7 +880,7 @@ $toolsGroup.Controls.Add($diagnosticsBtn)
 
 $logGroup = New-Object System.Windows.Forms.GroupBox
 $logGroup.Text = T 'log.title'
-$logGroup.Location = New-Object System.Drawing.Point(16, 600)
+$logGroup.Location = New-Object System.Drawing.Point(16, 655)
 $logGroup.Size = New-Object System.Drawing.Size(930, 165)
 $logGroup.SuspendLayout()
 Register-Text $logGroup 'log.title'
@@ -779,6 +895,80 @@ $logBox.ReadOnly = $true
 $logBox.Font = New-Object System.Drawing.Font('Consolas', 9)
 $logGroup.Controls.Add($logBox)
 
+function Safe-Text([System.Windows.Forms.TextBox]$Box) {
+    $t = $Box.Text
+    if ($null -eq $t) { return '' }
+    return $t.Trim()
+}
+
+function Get-WizardStepTextKey([string]$StepId) {
+    if ($StepId -eq 'install' -and $script:CurrentProvider -eq 'occ') {
+        return 'wizard.step.installOcc'
+    }
+    return "wizard.step.$StepId"
+}
+
+function Layout-WizardSteps {
+    $stepY = 70
+    $stepOrder = @('install', 'login', 'configure', 'restart', 'verify')
+
+    foreach ($stepId in $stepOrder) {
+        $label = $script:WizardStepLabels[$stepId]
+        $btn = $script:WizardStepButtons[$stepId]
+        if (-not $label) { continue }
+
+        $isLoginForOcc = ($stepId -eq 'login' -and $script:CurrentProvider -eq 'occ')
+        $label.Visible = -not $isLoginForOcc
+        if ($null -ne $btn) { $btn.Visible = -not $isLoginForOcc }
+
+        if (-not $isLoginForOcc) {
+            $label.Location = New-Object System.Drawing.Point(18, $stepY)
+            if ($null -ne $btn) {
+                $btn.Location = New-Object System.Drawing.Point(325, ($stepY - 4))
+            }
+            $stepY += 28
+        }
+    }
+}
+
+function Switch-Provider([string]$NewProvider) {
+    if ($script:CurrentProvider -eq $NewProvider) { return }
+    try {
+        [void]($script:Prefs.lastValues.port[$script:CurrentProvider] = Safe-Text $portBox)
+        [void]($script:Prefs.lastValues.installDir[$script:CurrentProvider] = Safe-Text $installDirBox)
+        [void]($script:Prefs.lastValues.opusModel[$script:CurrentProvider] = Safe-Text $opusModelBox)
+        [void]($script:Prefs.lastValues.sonnetModel[$script:CurrentProvider] = Safe-Text $sonnetModelBox)
+        [void]($script:Prefs.lastValues.haikuModel[$script:CurrentProvider] = Safe-Text $haikuModelBox)
+
+        $script:CurrentProvider = $NewProvider
+        [void]($portBox.Text = [string]$script:Prefs.lastValues.port[$NewProvider])
+        [void]($installDirBox.Text = [string]$script:Prefs.lastValues.installDir[$NewProvider])
+        [void]($opusModelBox.Text = [string]$script:Prefs.lastValues.opusModel[$NewProvider])
+        [void]($sonnetModelBox.Text = [string]$script:Prefs.lastValues.sonnetModel[$NewProvider])
+        [void]($haikuModelBox.Text = [string]$script:Prefs.lastValues.haikuModel[$NewProvider])
+
+        $meta = $script:ProviderMeta[$NewProvider]
+        [void]($deviceCheck.Visible = $meta.SupportsLogin)
+
+        Update-ProviderButtons
+
+        $script:WizardCompleted = $false
+        Update-WizardTitle
+        foreach ($step in $WizardSteps) {
+            if ($script:WizardStepLabels.ContainsKey($step.Id)) {
+                $textKey = Get-WizardStepTextKey $step.Id
+                [void]($script:WizardStepLabels[$step.Id].Tag = T $textKey)
+                Set-WizardStepState $step.Id 'pending'
+            }
+        }
+        Layout-WizardSteps
+        Save-UiPreferences
+        Refresh-AuthStatus
+    } catch {
+        Append-Log "Provider switch error: $($_.Exception.Message)"
+    }
+}
+
 $languageBox.Add_SelectedIndexChanged({
     if ($script:ApplyingLanguage) { return }
     $selected = [string]$languageBox.SelectedItem
@@ -791,12 +981,16 @@ $languageBox.Add_SelectedIndexChanged({
 $form.Add_FormClosing({ Save-UiPreferences })
 $form.Add_Shown({
     $form.BeginInvoke([System.Action]{
+        Update-ProviderButtons
+        Layout-WizardSteps
+        $deviceCheck.Visible = $script:ProviderMeta[$script:CurrentProvider].SupportsLogin
         Refresh-AuthStatus
         if ($script:Prefs.settingsLoadFailed) { Append-Log (T 'log.settingsFallback') }
     }) | Out-Null
 })
 
 Apply-Language
+$providerGroup.ResumeLayout($false)
 $settingsGroup.ResumeLayout($false)
 $wizardGroup.ResumeLayout($false)
 $mainGroup.ResumeLayout($false)

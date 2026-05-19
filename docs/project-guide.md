@@ -2,10 +2,11 @@
 
 ## 目标
 
-CodexToClaude 的目标是把用户的 Codex Plus/Pro 订阅通过 CLIProxyAPI 暴露为 Claude Code 可调用的 Anthropic-compatible 本地接口。
+CodexToClaude 的目标是通过本地代理将多种后端暴露为 Claude Code 可调用的 Anthropic-compatible 接口。
 
 ```text
 Claude Code → http://127.0.0.1:<Port> → CLIProxyAPI → Codex OAuth
+                                    \-> oc-go-cc   → OpenCode Go
 ```
 
 ## 项目边界
@@ -21,10 +22,13 @@ Claude Code → http://127.0.0.1:<Port> → CLIProxyAPI → Codex OAuth
 CodexToClaude/
 ├── CodexToClaude-GUI.cmd
 ├── scripts/
-│   ├── CodexToClaude.ps1
-│   └── CodexToClaude.UI.ps1
+│   ├── CodexToClaude.ps1          ← 主调度 + 共享函数 + 命令分发
+│   ├── CodexToClaude.UI.ps1       ← WinForms GUI
+│   └── providers/
+│       ├── cliproxy.ps1            ← CLIProxyAPI provider (CLIProxy-*)
+│       └── occ.ps1                ← oc-go-cc provider (OCC-*)
 ├── docs/
-│   ├── manual.md
+│   ├── 手动安装与使用.md
 │   ├── claude-code-setup.md
 │   └── project-guide.md
 ├── test/
@@ -35,16 +39,18 @@ CodexToClaude/
 
 ## 主脚本职责
 
-`scripts/CodexToClaude.ps1` 是唯一业务逻辑入口。
+`scripts/CodexToClaude.ps1` 是分发层：通过 `-Provider cliproxy|occ`（默认 cliproxy）参数选择后端，然后分发到对应 provider 函数。共享工具函数（Write-*, Configure-Claude, Test-ClaudeStreamJson 等）和项目级命令（project-version 等）保留在主脚本中。
 
-子命令：
+`scripts/providers/cliproxy.ps1` 和 `scripts/providers/occ.ps1` 是后端 provider，各自实现前缀函数（CLIProxy-* / OCC-*）：InstallBinary, WriteConfig, StartProcess, StopProcess, GetAuthStatus, InvokeModels, InvokeMessage, GetLatestRelease, UpdateBinary, ShowVersion, ShowStatusDetail, GetConfigValue。
 
-- `install`：创建/更新 CLIProxyAPI 配置，必要时下载 exe。
-- `login`：执行 Codex OAuth 登录。
-- `configure`：合并更新 Claude Code `settings.json`。
-- `start` / `stop` / `restart`：管理 CLIProxyAPI 进程。
-- `status`：显示 exe、config、auth、端口、Claude settings 状态。
-- `auth-status`：只检查 Codex OAuth auth 状态。
+子命令（所有子命令尊重 `-Provider` 参数）：
+
+- `install`：创建/更新 provider 配置，必要时下载 exe。
+- `login`：仅 CLIProxyAPI 支持（Codex OAuth）；OCC 报错提示使用环境变量 `OC_GO_CC_API_KEY`。
+- `configure`：写 provider config，合并更新 Claude Code `settings.json`。
+- `start` / `stop` / `restart`：管理 provider 进程。两个后端可同时运行在不同端口。
+- `status`：显示当前 provider 的 exe、config、auth、端口、Claude settings 状态。
+- `auth-status`：CLIProxy 扫 OAuth JSON，OCC 检查 API key 环境变量/配置文件。
 - `verify`：验证 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
 - `doctor`：执行 status + verify。
 - `project-version` / `project-update`：显示 `VERSION` 项目版本和 git 状态，并在工作区干净时安全快进更新。
@@ -77,14 +83,22 @@ GUI 使用单文件数据驱动结构，仍不引入 Node/.NET 打包链路。
 
 ## 上游依赖与版本管理
 
-项目版本号由仓库根目录 `VERSION` 文件维护，格式为 `v<major>.<minor>.<patch>.<build>`，例如 `v1.0.0.1`。`project-version` 和 GUI 标题/高级管理窗口应读取同一个版本源。
+项目版本号由仓库根目录 `VERSION` 文件维护，格式为 `v<major>.<minor>.<patch>.<build>`，例如 `v1.0.0.2`。`project-version` 和 GUI 标题/高级管理窗口应读取同一个版本源。
 
-CodexToClaude 基于 CLIProxyAPI 构建；CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换，CodexToClaude 负责 Windows 友好的安装、配置、启停、诊断、更新和 GUI 编排。
+**版本自动迭代规则**：每次有意义的提交（新功能、bug 修复、重构）应自动递增 build 号（第四位）。major/minor/patch 的变更由维护者判断。实现方式：
+- 每次提交前检查 `VERSION` 是否需要 bump
+- 同步更新 `README.md` 中的版本徽章（`version-v1.0.0.x-lightgrey`）
+- `project-version` 命令读取 `VERSION` 文件显示当前版本和 git 状态
+
+CodexToClaude 基于 CLIProxyAPI 和 oc-go-cc 构建：
+- CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 能力的代理转换
+- oc-go-cc 负责 Anthropic↔OpenAI 格式转换，面向 OpenCode Go 后端
+- CodexToClaude 负责 Windows 友好的安装、配置、启停、诊断、更新和 GUI 编排
 
 - 项目更新使用 `project-update`，只允许在 git 工作区干净时执行 `git fetch` + `git pull --ff-only`，避免覆盖用户未提交改动。
-- CLIProxyAPI 更新使用 `cliproxy-update`，流程是 stop -> 下载 latest release -> 备份旧 exe -> 替换 -> 如原本运行则 start。
-- CLIProxyAPI 自动下载仍只选择 GitHub release 中 Windows x64 / amd64 的 zip 或 exe asset。
-- 更新 CLIProxyAPI 后必须保留 `-config` 和 `WorkingDirectory` 设为 `$InstallDir` 的启动契约。
+- 二进制更新使用 `cliproxy-update`（同时作用于当前 `-Provider`），流程是 stop -> 下载 latest release -> 备份旧 exe -> 替换 -> 如原本运行则 start。下载失败时必须重启原有服务。
+- 自动下载只选择 GitHub release 中 Windows x64 / amd64 的 zip 或 exe asset。
+- 更新后必须保留 `-config` 和 `WorkingDirectory` 设为 `$InstallDir` 的启动契约。
 - 修改版本管理逻辑后，除脚本测试外，涉及真实服务管理时仍需跑 `restart` 和 `verify`。
 
 ## 配置写入规则
@@ -118,6 +132,26 @@ payload:
 ```
 
 原因：Claude Code TUI 显示 Codex thinking 流时，中文片段可能重复字符；过滤 reasoning 后正常回答文本不受影响。
+
+`config.json`（oc-go-cc）写入位置：
+
+```text
+<repo-root>\oc-go-cc\config.json
+```
+
+核心字段：
+
+```json
+{
+    "host": "127.0.0.1",
+    "port": <用户提供>,
+    "api_key": "<用户提供或 ${OC_GO_CC_API_KEY}>",
+    "proxy_url": "<用户提供；直连时省略>"
+}
+```
+
+- `api_key`：用户通过 GUI 的 ApiKey 字段或 CLI 的 `-ApiKey` 提供时写入真实值；否则写入 `${OC_GO_CC_API_KEY}` 占位符（oc-go-cc 在运行时通过环境变量插值解析）。
+- OCC 不支持 `payload.filter`，无 reasoning 过滤配置。
 
 ## Claude Code settings 合并规则
 
@@ -247,3 +281,56 @@ git diff
 ```
 
 不要提交 OAuth JSON、日志、token、真实 API key。
+
+## PowerShell 编码约束
+
+### 管线输出污染
+
+.NET 属性赋值（如 `$btn.Text = "..."`、`$label.ForeColor = ...`）会向管线输出被赋值的对象。在函数中累积的管线输出会形成 `Object[]`，当意外进入算术表达式时触发 `[System.Object[]]` 不包含 `op_Subtraction` 错误。
+
+**规则**：所有 .NET 属性赋值必须用 `[void]()` 或 `$null = ` 包裹。
+
+```powershell
+# 正确
+[void]($btn.Text = "Update")
+[void]($label.ForeColor = [System.Drawing.Color]::ForestGreen)
+
+# 错误 — 会泄漏到管线
+$btn.Text = "Update"
+$label.ForeColor = [System.Drawing.Color]::ForestGreen
+```
+
+此规则尤其适用于以下函数：`Apply-Language`、`Update-ProviderButtons`、`Switch-Provider`、`Set-WizardStepState`。
+
+### 函数定义顺序
+
+PowerShell 不会在解析阶段提升函数定义。顶层代码（不在任何函数内的代码）必须在函数定义**之后**才能调用该函数。
+
+```powershell
+# 错误 — 顶层代码在函数定义前调用
+Do-Something                    # 此时函数尚未注册
+function Do-Something { ... }
+
+# 正确 — 函数先定义，顶层代码后调用
+function Do-Something { ... }
+Do-Something
+```
+
+函数**内部**可以调用脚本中任何位置定义的其他函数，因为函数体延迟执行。
+
+### 外部进程退出码
+
+`try/catch` 不会捕获外部进程的非零退出码。调用外部 exe 后必须显式检查 `$LASTEXITCODE`。
+
+```powershell
+& $ExePath -config $ConfigPath $loginArg
+if ($LASTEXITCODE -ne 0) { throw "Login failed with exit code $LASTEXITCODE." }
+```
+
+### 环境变量恢复
+
+在函数中临时修改进程级环境变量后，必须在 `try/finally` 的 `finally` 块中恢复原始值。
+
+### `$args` 自动变量
+
+函数体内不要使用 `$args` 作为局部变量名；它是 PowerShell 的自动变量，遮蔽后会破坏未绑定参数的接收能力。改用 `$cliArgs`、`$authArgs` 等描述性名称。

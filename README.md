@@ -1,33 +1,35 @@
 # CodexToClaude
 
-> **C**odex + **C**laude **Code** — 把 Codex 订阅变成 Claude Code 可用的模型
+> **C**odex + **C**laude **Code** — 把 Codex 订阅和 OpenCode Go 变成 Claude Code 可用的模型
 
 [![English](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://learn.microsoft.com/en-us/powershell/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.0.1-lightgrey.svg)](./VERSION)
+[![Version](https://img.shields.io/badge/version-v1.0.0.2-lightgrey.svg)](./VERSION)
 
-CodexToClaude 通过 CLIProxyAPI 把你的 Codex Plus/Pro OAuth 登录转换成本机 Anthropic-compatible API，让 Claude Code 直接使用 Codex 模型。Windows 优先，GUI 一键操作。
+CodexToClaude 通过本地代理把你的 Codex Plus/Pro 或 OpenCode Go 转换成本机 Anthropic-compatible API，让 Claude Code 直接使用。Windows 优先，GUI 一键操作，支持多后端切换。
 
 ```text
 Claude Code → http://127.0.0.1:<Port> → CLIProxyAPI → Codex OAuth → Codex models
+                                     \-> oc-go-cc    → OpenCode Go models
 ```
 
 ## ✨ 功能
 
 - 🖥️ **GUI 一键操作** — 双击 `CodexToClaude-GUI.cmd`，中文/English 界面切换
-- 🧙 **快速开始向导** — Install → Login → Configure → Restart → Verify，每一步都有 CLI 日志
-- 🔐 **OAuth 设备码登录** — 浏览器不方便时，勾选 Device Login 即可
+- 🔀 **多后端切换** — Codex (Codex Plus/Pro) 和 OpenCode Go 一键切换，无需重启
+- 🧙 **快速开始向导** — Install → Login → Configure → Restart → Verify，OCC 后端自动隐藏登录步骤
+- 🔐 **OAuth 设备码登录** — Codex 支持设备码登录；OCC 直接在界面输入 API Key
 - 🧪 **端到端验证** — `/v1/models`、`/v1/messages` 和 Claude Code stream-json 自动检查
-- 📦 **版本管理** — GUI 内查看/更新项目和 CLIProxyAPI，无需手动操作
+- 📦 **版本管理** — GUI 内查看/更新项目和后端二进制，无需手动操作
 - 🔄 **自动迁移** — 从旧版 `~\.cli-proxy-api` 自动迁移到项目内目录
 
 ## 📋 前提
 
 | 条件 | 说明 |
 |------|------|
-| Codex Plus/Pro 订阅 | 需要有效的 Codex OAuth 登录 |
-| 代理地址 | 访问 Codex/OpenAI 上游的代理，直连填 `none` |
+| Codex Plus/Pro 订阅 **或** OpenCode Go API Key | 二选一即可 |
+| 代理地址 | 访问上游的代理，直连填 `none` |
 | Windows / PowerShell 5.1+ | 主要运行环境 |
 | [Git for Windows](https://git-scm.com/) | 项目自更新需要 |
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | CLI 或 IDE 集成均可 |
@@ -36,8 +38,8 @@ Claude Code → http://127.0.0.1:<Port> → CLIProxyAPI → Codex OAuth → Code
 
 | 名称 | 说明 | 示例 |
 |------|------|------|
-| `Port` | CLIProxyAPI 本机监听端口。Claude Code 访问 `http://127.0.0.1:<Port>` | `8317` |
-| `ProxyUrl` | CLIProxyAPI 访问上游的代理。直连必须显式填 `none` | `http://127.0.0.1:7897` |
+| `Port` | 代理本机监听端口。Claude Code 访问 `http://127.0.0.1:<Port>` | `8317`（Codex）/ `3456`（OpenCode Go）|
+| `ProxyUrl` | 访问上游的代理。直连必须显式填 `none` | `http://127.0.0.1:7897` |
 
 > ⚠️ 不要留空 ProxyUrl。留空会让安装后的验证结果不明确。
 
@@ -62,15 +64,16 @@ CodexToClaude-GUI.cmd
 
 | 区域 | 用途 |
 |------|------|
-| `Quick start wizard` | 首次一键配置流程 |
+| `Model Source` / `模型来源` | **Codex** / **OpenCode Go** 一键切换，每个后端独立保存端口/目录/模型 |
+| `Quick start wizard` | 首次一键配置流程（OCC 后端自动隐藏登录步骤） |
 | `Main flow` | 常用按钮（Install / Login / Configure / Restart / Verify） |
 | `Claude models` | 修改 Opus / Sonnet / Haiku 模型名，保存后建议 Restart + Verify |
-| `Advanced Management` | 项目版本和 CLIProxyAPI 更新（独立窗口） |
+| `Advanced Management` | 项目版本和二进制更新（独立窗口） |
 | `Diagnostics` | Start / Stop / Status / Doctor / 刷新登录状态 / 打开目录 |
 
 ## 🖥️ CLI 用法
 
-### 首次安装
+### 首次安装（Codex）
 
 ```powershell
 .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl "http://127.0.0.1:7897"
@@ -78,6 +81,15 @@ CodexToClaude-GUI.cmd
 .\scripts\CodexToClaude.ps1 configure -Port 8317 -ProxyUrl "http://127.0.0.1:7897"
 .\scripts\CodexToClaude.ps1 restart
 .\scripts\CodexToClaude.ps1 verify
+```
+
+### 首次安装（OpenCode Go）
+
+```powershell
+.\scripts\CodexToClaude.ps1 install -Provider occ -Port 3456 -ProxyUrl none -ApiKey "oc-go-cc-..."
+.\scripts\CodexToClaude.ps1 configure -Provider occ -Port 3456 -ProxyUrl none -ApiKey "oc-go-cc-..."
+.\scripts\CodexToClaude.ps1 restart -Provider occ
+.\scripts\CodexToClaude.ps1 verify -Provider occ
 ```
 
 ### 设备码登录
@@ -130,8 +142,11 @@ CodexToClaude-GUI.cmd
 CodexToClaude/
 ├── CodexToClaude-GUI.cmd      ← 双击启动 GUI
 ├── scripts/
-│   ├── CodexToClaude.ps1       ← CLI 主脚本（所有业务逻辑）
-│   └── CodexToClaude.UI.ps1    ← WinForms GUI（参数收集 + 步骤编排）
+│   ├── CodexToClaude.ps1       ← CLI 主脚本（分发层 + 共享函数）
+│   ├── CodexToClaude.UI.ps1    ← WinForms GUI（参数收集 + 步骤编排）
+│   └── providers/
+│       ├── cliproxy.ps1         ← CLIProxyAPI 后端（Codex OAuth）
+│       └── occ.ps1             ← oc-go-cc 后端（OpenCode Go）
 ├── test/
 │   └── Test-CodexToClaude.ps1  ← 自动化测试
 ├── docs/
@@ -139,23 +154,26 @@ CodexToClaude/
 │   ├── claude-code-setup.md    ← 新机器自动配置
 │   └── 手动安装与使用.md        ← 不用 CodexToClaude 工具的手动方式
 ├── cli-proxy-api/              ← CLIProxyAPI 安装目录（git 排除）
+├── oc-go-cc/                   ← oc-go-cc 安装目录（git 排除）
 ├── VERSION                     ← 版本号唯一真源
 ├── README.md
 └── CLAUDE.local.md             ← 项目本地指令
 ```
 
-## 🔐 Login 状态
+## 🔐 认证状态
 
-`Login` 完成后会检查 `<repo-root>\cli-proxy-api` 下的 OAuth JSON：
+**Codex 后端**：`Login` 完成后检查 `<repo-root>\cli-proxy-api` 下的 OAuth JSON：
 
 - 是否存在 auth JSON
 - 是否为 `type=codex`
 - 是否没有 `disabled=true`
 - 是否能识别邮箱和过期时间
 
-**不会打印** `access_token`、`refresh_token`、`id_token`。
+**OpenCode Go 后端**：检查 `config.json` 中的 `api_key` 或 `OC_GO_CC_API_KEY` 环境变量是否已配置。
 
-### 登录失败？
+**不会打印** `access_token`、`refresh_token`、`id_token`、真实 API key。
+
+### 登录失败？（Codex）
 
 1. 确认代理可用，重新运行 `install/configure -ProxyUrl ...`
 2. 改用设备码登录：`login -Device`
@@ -167,8 +185,10 @@ CodexToClaude/
 
 | 文件 | 用途 |
 |------|------|
-| `<repo-root>\cli-proxy-api\config.yaml` | CLIProxyAPI 运行配置 |
+| `<repo-root>\cli-proxy-api\config.yaml` | CLIProxyAPI 运行配置（Codex 后端） |
 | `<repo-root>\cli-proxy-api\cli-proxy-api.exe` | CLIProxyAPI 可执行文件 |
+| `<repo-root>\oc-go-cc\config.json` | oc-go-cc 运行配置（OpenCode Go 后端） |
+| `<repo-root>\oc-go-cc\oc-go-cc.exe` | oc-go-cc 可执行文件 |
 | `<repo-root>\cli-proxy-api\codex-*.json` | Codex OAuth 登录文件 |
 | `~/.claude/settings.json` | Claude Code 访问本机代理的 env 配置 |
 
@@ -193,12 +213,14 @@ Claude Code TUI 显示 Codex thinking 流时，中文片段可能出现重复字
 
 ## 🔗 参考项目
 
-CodexToClaude 基于 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 构建。
+CodexToClaude 基于以下开源项目构建：
 
-- CLIProxyAPI 负责本地 Anthropic-compatible API 与 Codex OAuth 的代理转换
-- CodexToClaude 提供 Windows 友好的安装、配置、启动、诊断、更新和 GUI 编排
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — 本地 Anthropic-compatible API 与 Codex OAuth 的代理转换
+- [oc-go-cc](https://github.com/samueltuyizere/oc-go-cc) — OpenCode Go 的 Anthropic↔OpenAI 格式转换代理（AGPL-3.0，下载模式集成）
 
-CLIProxyAPI 手动更新：打开 [Releases](https://github.com/router-for-me/CLIProxyAPI/releases)，下载 Windows x64 / amd64 版本，停止服务后替换 `<repo-root>\cli-proxy-api\cli-proxy-api.exe`，再 `restart` + `verify`。
+CodexToClaude 提供 Windows 友好的安装、配置、启动、诊断、更新和 GUI 编排。
+
+二进制手动更新：打开对应 Release 页面，下载 Windows x64 / amd64 版本，停止服务后替换对应 exe，再 `restart` + `verify`。
 
 ## 🛡️ 安全
 

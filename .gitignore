@@ -12,3 +12,4 @@ codex-*.json
 .env
 .claude/settings.local.json
 cli-proxy-api/
+oc-go-cc/

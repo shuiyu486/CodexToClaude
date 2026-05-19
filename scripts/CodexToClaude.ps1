@@ -4,14 +4,19 @@ param(
     [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'project-version', 'project-update', 'cliproxy-version', 'cliproxy-update', 'models', 'configure-models', 'help')]
     [string]$Command = 'help',
 
+    # --- Provider selection ---
+    [ValidateSet('cliproxy', 'occ')]
+    [string]$Provider = 'cliproxy',
+
+    # --- Common parameters ---
     [int]$Port,
     [string]$ProxyUrl,
     [string]$ApiKey = 'sk-cliproxy-local-dev-2026',
-    [string]$InstallDir = (Join-Path (Split-Path -Parent $PSScriptRoot) 'cli-proxy-api'),
+    [string]$InstallDir,
     [string]$ClaudeSettingsPath = (Join-Path $env:USERPROFILE '.claude\settings.json'),
-    [string]$OpusModel = 'gpt-5.5',
-    [string]$SonnetModel = 'gpt-5.4',
-    [string]$HaikuModel = 'gpt-5.4',
+    [string]$OpusModel,
+    [string]$SonnetModel,
+    [string]$HaikuModel,
     [switch]$Device,
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
@@ -20,12 +25,65 @@ param(
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
 $ProxyUrlProvided = $PSBoundParameters.ContainsKey('ProxyUrl')
-$ExePath = Join-Path $InstallDir 'cli-proxy-api.exe'
-$ConfigPath = Join-Path $InstallDir 'config.yaml'
+
+# ============================================================
+# Provider metadata & path initialization
+# ============================================================
+$script:ProviderMeta = @{
+    cliproxy = @{
+        Name = 'CLIProxyAPI'
+        Prefix = 'CLIProxy'
+        DefaultPort = 8317
+        ExeName = 'cli-proxy-api.exe'
+        ConfigFile = 'config.yaml'
+        InstallDirName = 'cli-proxy-api'
+        HealthEndpoint = '/healthz'
+        SupportsLogin = $true
+    }
+    occ = @{
+        Name = 'oc-go-cc'
+        Prefix = 'OCC'
+        DefaultPort = 3456
+        ExeName = 'oc-go-cc.exe'
+        ConfigFile = 'config.json'
+        InstallDirName = 'oc-go-cc'
+        HealthEndpoint = '/health'
+        SupportsLogin = $false
+    }
+}
+
+$PMeta = $script:ProviderMeta[$Provider]
+$InstallDirProvided = $PSBoundParameters.ContainsKey('InstallDir')
+
+if (-not $InstallDirProvided) {
+    $InstallDir = Join-Path (Split-Path -Parent $PSScriptRoot) $PMeta.InstallDirName
+}
+
+$ExePath = Join-Path $InstallDir $PMeta.ExeName
+$ConfigPath = Join-Path $InstallDir $PMeta.ConfigFile
 $LogPath = Join-Path $InstallDir 'logs\main.log'
 
+# Default models per provider
+$script:DefaultModels = @{
+    cliproxy = @{ Opus = 'gpt-5.5'; Sonnet = 'gpt-5.4'; Haiku = 'gpt-5.4' }
+    occ = @{ Opus = 'claude-opus-4-5'; Sonnet = 'claude-sonnet-4-6'; Haiku = 'claude-haiku-4-5' }
+}
+
+if (-not $PSBoundParameters.ContainsKey('OpusModel')) { $OpusModel = $script:DefaultModels[$Provider].Opus }
+if (-not $PSBoundParameters.ContainsKey('SonnetModel')) { $SonnetModel = $script:DefaultModels[$Provider].Sonnet }
+if (-not $PSBoundParameters.ContainsKey('HaikuModel')) { $HaikuModel = $script:DefaultModels[$Provider].Haiku }
+
+# ============================================================
+# Dot-source provider scripts
+# ============================================================
+$ProviderDir = Join-Path $PSScriptRoot 'providers'
+. (Join-Path $ProviderDir 'cliproxy.ps1')
+. (Join-Path $ProviderDir 'occ.ps1')
+
+# ============================================================
+# Utility functions (shared, provider-agnostic)
+# ============================================================
 function Write-Step([string]$Message) { Write-Host ("`n>> " + $Message) -ForegroundColor Cyan }
 function Write-OK([string]$Message) { Write-Host ("    [OK] " + $Message) -ForegroundColor Green }
 function Write-Warn([string]$Message) { Write-Host ("    [!!] " + $Message) -ForegroundColor Yellow }
@@ -48,66 +106,58 @@ function Write-FileUtf8NoBom([string]$Path, [string]$Content) {
 
 function Show-Help {
     Write-Host "CodexToClaude $(Get-ProjectVersion)" -ForegroundColor Cyan
-    Write-Host 'Use Codex Plus/Pro through CLIProxyAPI in Claude Code.' -ForegroundColor Gray
+    Write-Host 'Use Codex Plus/Pro and OpenCode Go through local proxies in Claude Code.' -ForegroundColor Gray
     Write-Host ''
     Write-Host 'Commands:'
-    Write-Host '  install      Install/update CLIProxyAPI config and optionally download executable'
-    Write-Host '  login        Run Codex OAuth login through CLIProxyAPI'
-    Write-Host '  configure    Merge Claude Code settings.json env values'
-    Write-Host '  start        Start CLIProxyAPI in background'
-    Write-Host '  stop         Stop CLIProxyAPI listening on configured port'
-    Write-Host '  restart      Stop then start CLIProxyAPI and wait for readiness'
-    Write-Host '  status       Show local setup status'
-    Write-Host '  auth-status  Show Codex OAuth login/auth status'
+    Write-Host '  install      Install/update proxy config and optionally download executable'
+    Write-Host '  login        Run authentication (Codex OAuth only; OCC uses API key env var)'
+    Write-Host '  configure    Write proxy config and merge Claude Code settings.json env values'
+    Write-Host '  start        Start the proxy server in background'
+    Write-Host '  stop         Stop the proxy server listening on configured port'
+    Write-Host '  restart      Stop then start and wait for readiness'
+    Write-Host '  status       Show local setup status for current provider'
+    Write-Host '  auth-status  Show authentication status for current provider'
     Write-Host '  verify       Verify /v1/models and /v1/messages'
     Write-Host '  doctor       Run status and verify'
     Write-Host '  project-version   Show CodexToClaude VERSION and git status'
     Write-Host '  project-update    Safely update CodexToClaude with git pull --ff-only'
-    Write-Host '  cliproxy-version  Show local and latest CLIProxyAPI version'
-    Write-Host '  cliproxy-update   Stop, update, and restart CLIProxyAPI latest release'
+    Write-Host '  cliproxy-version  Show local and latest proxy binary version'
+    Write-Host '  cliproxy-update   Stop, update, and restart proxy binary to latest release'
     Write-Host '  models            Show configured Claude model env values'
     Write-Host '  configure-models  Update Claude model env values'
     Write-Host ''
+    Write-Host 'Provider selection: -Provider cliproxy|occ (default: cliproxy)' -ForegroundColor Yellow
+    Write-Host "  cliproxy  CLIProxyAPI (Codex/OAI)     default port: $($script:ProviderMeta.cliproxy.DefaultPort)"
+    Write-Host "  occ       oc-go-cc (OpenCode Go)      default port: $($script:ProviderMeta.occ.DefaultPort)"
+    Write-Host ''
     Write-Host 'Required setup values:' -ForegroundColor Yellow
-    Write-Host '  -Port      Local CLIProxyAPI listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 8317'
-    Write-Host '  -ProxyUrl  Upstream proxy for Codex/OpenAI access. Example: http://127.0.0.1:7897'
+    Write-Host '  -Port      Local proxy listen port. Claude Code uses http://127.0.0.1:<Port>.'
+    Write-Host '  -ProxyUrl  Upstream proxy for API access. Example: http://127.0.0.1:7897'
     Write-Host '             If your network can access upstream directly, explicitly use: -ProxyUrl none'
     Write-Host ''
     Write-Host 'Examples:'
     Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl "http://127.0.0.1:7897"'
-    Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl none'
+    Write-Host '  .\scripts\CodexToClaude.ps1 install -Provider occ -Port 3456 -ProxyUrl none'
     Write-Host '  .\scripts\CodexToClaude.ps1 login -Device'
     Write-Host '  .\scripts\CodexToClaude.ps1 restart'
 }
 
+# ============================================================
+# Provider-aware wrapper functions
+# ============================================================
 function Get-ConfigValue([string]$Name) {
-    if (-not (Test-Path $ConfigPath)) { return $null }
-    $raw = Get-Content $ConfigPath -Raw -Encoding UTF8
-    $escaped = [regex]::Escape($Name)
-    $m = [regex]::Match($raw, "(?m)^$escaped\s*:\s*`"?([^`"\r\n#]+)`"?\s*$")
-    if ($m.Success) { return $m.Groups[1].Value.Trim() }
-    return $null
+    $func = "$($PMeta.Prefix)-GetConfigValue"
+    return & $func $Name
 }
 
-function Resolve-Port([bool]$RequirePrompt) {
-    if ($Port -gt 0) { return $Port }
-    $fromConfig = Get-ConfigValue 'port'
-    if ($fromConfig -and ($fromConfig -match '^\d+$')) { return [int]$fromConfig }
-    if (-not $RequirePrompt) {
-        throw 'Missing port. Run configure/install with -Port first. Example: .\scripts\CodexToClaude.ps1 configure -Port 8317 -ProxyUrl http://127.0.0.1:7897'
-    }
-    while ($true) {
-        Write-Host ''
-        Write-Host 'Port is the local CLIProxyAPI listen port. Claude Code will call http://127.0.0.1:<Port>.' -ForegroundColor Yellow
-        Write-Host 'Example: 8317' -ForegroundColor Gray
-        $inputPort = Read-Host 'Enter Port'
-        if ($inputPort -match '^\d+$' -and [int]$inputPort -gt 0 -and [int]$inputPort -lt 65536) {
-            return [int]$inputPort
-        }
-        Write-Warn 'Port must be a number from 1 to 65535.'
-    }
+function Get-AuthStatus {
+    $func = "$($PMeta.Prefix)-GetAuthStatus"
+    return & $func
 }
 
+# ============================================================
+# Shared infrastructure functions
+# ============================================================
 function Normalize-ProxyUrl([string]$Value) {
     if ($null -eq $Value) { return $null }
     $v = $Value.Trim()
@@ -128,7 +178,7 @@ function Resolve-ProxyUrl([bool]$RequirePrompt) {
     }
     while ($true) {
         Write-Host ''
-        Write-Host 'ProxyUrl is the upstream proxy used by CLIProxyAPI to access Codex/OpenAI.' -ForegroundColor Yellow
+        Write-Host 'ProxyUrl is the upstream proxy used to access API endpoints.' -ForegroundColor Yellow
         Write-Host 'Example: http://127.0.0.1:7897' -ForegroundColor Gray
         Write-Host 'If direct access works, enter none. Do not leave it blank.' -ForegroundColor Gray
         $inputProxy = Read-Host 'Enter ProxyUrl'
@@ -142,127 +192,42 @@ function Resolve-ProxyUrl([bool]$RequirePrompt) {
     }
 }
 
+function Resolve-Port([bool]$RequirePrompt) {
+    if ($Port -gt 0) {
+        if ($InstallDirProvided) {
+            $script:InstallDir = $InstallDir
+            $script:ExePath = Join-Path $InstallDir $PMeta.ExeName
+            $script:ConfigPath = Join-Path $InstallDir $PMeta.ConfigFile
+            $script:LogPath = Join-Path $InstallDir 'logs\main.log'
+        }
+        return $Port
+    }
+    if (-not $InstallDirProvided) {
+        $fromConfig = Get-ConfigValue 'port'
+        if ($fromConfig -and ($fromConfig -match '^\d+$')) { return [int]$fromConfig }
+    }
+    if (-not $RequirePrompt) {
+        throw "Missing port. Run configure/install with -Port first. Example: .\scripts\CodexToClaude.ps1 configure -Provider $Provider -Port $($PMeta.DefaultPort) -ProxyUrl http://127.0.0.1:7897"
+    }
+    while ($true) {
+        Write-Host ''
+        Write-Host "Port is the local $($PMeta.Name) listen port. Claude Code will call http://127.0.0.1:<Port>." -ForegroundColor Yellow
+        Write-Host "Default: $($PMeta.DefaultPort)" -ForegroundColor Gray
+        $inputPort = Read-Host 'Enter Port'
+        if ($inputPort -match '^\d+$' -and [int]$inputPort -gt 0 -and [int]$inputPort -lt 65536) {
+            if ($InstallDirProvided) {
+                $script:InstallDir = $InstallDir
+                $script:ExePath = Join-Path $InstallDir $PMeta.ExeName
+                $script:ConfigPath = Join-Path $InstallDir $PMeta.ConfigFile
+                $script:LogPath = Join-Path $InstallDir 'logs\main.log'
+            }
+            return [int]$inputPort
+        }
+        Write-Warn 'Port must be a number from 1 to 65535.'
+    }
+}
+
 function Ensure-InstallDir { if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Force $InstallDir | Out-Null } }
-
-function Move-LegacyInstall {
-    $legacyDir = Join-Path $env:USERPROFILE '.cli-proxy-api'
-    if (-not (Test-Path $legacyDir)) { return }
-    $legacyItems = Get-ChildItem $legacyDir -ErrorAction SilentlyContinue
-    if (-not $legacyItems -or $legacyItems.Count -eq 0) { return }
-    if ((Join-Path $legacyDir 'config.yaml') -eq $ConfigPath) { return }
-    Write-Step 'Migrating legacy install from ~/.cli-proxy-api'
-    Ensure-InstallDir
-    $copied = 0
-    foreach ($item in $legacyItems) {
-        $dest = Join-Path $InstallDir $item.Name
-        if (Test-Path $dest) {
-            Write-Info "Skip (exists): $($item.Name)"
-            continue
-        }
-        if ($item.PSIsContainer) {
-            Copy-Item $item.FullName $dest -Recurse -Force
-        } else {
-            Copy-Item $item.FullName $dest -Force
-        }
-        Write-Info "Migrated: $($item.Name)"
-        $copied++
-    }
-    if ($copied -gt 0) {
-        Write-OK "Migrated $copied items to $InstallDir. You may remove $legacyDir when ready."
-    }
-}
-
-function Get-CLIProxyLatestRelease {
-    $headers = @{ 'User-Agent' = 'CodexToClaude' }
-    if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
-    elseif ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing -Headers $headers -TimeoutSec 30
-    $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
-    if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
-    return [pscustomobject]@{ release = $release; asset = $asset }
-}
-
-function Install-CLIProxyAsset([string]$DownloadUrl, [string]$AssetName, [string]$DestinationPath) {
-    Ensure-InstallDir
-    $downloadPath = Join-Path $InstallDir $AssetName
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $downloadPath -UseBasicParsing
-    if ($downloadPath -match '\.exe$') {
-        Move-Item -Force $downloadPath $DestinationPath
-    } else {
-        $extractDir = Join-Path $InstallDir 'download-extract'
-        if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
-        Expand-Archive -Path $downloadPath -DestinationPath $extractDir -Force
-        $exe = Get-ChildItem $extractDir -Recurse -Filter 'cli-proxy-api.exe' | Select-Object -First 1
-        if (-not $exe) { throw 'Downloaded archive does not contain cli-proxy-api.exe.' }
-        Copy-Item -Force $exe.FullName $DestinationPath
-        Remove-Item $extractDir -Recurse -Force
-        Remove-Item $downloadPath -Force
-    }
-}
-
-function Download-CLIProxyApi {
-    if (Test-Path $ExePath) {
-        Write-OK "cli-proxy-api.exe exists: $ExePath"
-        return
-    }
-
-    Write-Step 'Downloading CLIProxyAPI latest release'
-    try {
-        $latest = Get-CLIProxyLatestRelease
-        $downloadUrl = $latest.asset.browser_download_url
-        $assetName = $latest.asset.name
-        Write-Info "Latest: $($latest.release.tag_name)  Asset: $assetName"
-        Install-CLIProxyAsset $downloadUrl $assetName $ExePath
-        Write-OK "Downloaded: $ExePath"
-    } catch {
-        Write-Fail "Automatic download failed: $($_.Exception.Message)"
-        Write-Info 'You can still proceed. Download the asset manually:'
-        Write-Info '  1. Open https://github.com/router-for-me/CLIProxyAPI/releases/latest'
-        Write-Info '  2. Download the Windows x64/amd64 asset'
-        Write-Info "  3. Place cli-proxy-api.exe at: $ExePath"
-        Write-Info '  4. Set GH_TOKEN env var (optional) to avoid GitHub API rate limits'
-    }
-}
-
-function Write-Config([int]$ResolvedPort, [string]$ResolvedProxyUrl) {
-    $proxyLine = ''
-    if ($ResolvedProxyUrl -ne '') { $proxyLine = "proxy-url: `"$ResolvedProxyUrl`"`n" }
-    $content = @"
-# CLIProxyAPI config generated by CodexToClaude
-host: "127.0.0.1"
-port: $ResolvedPort
-$proxyLine
-remote-management:
-  allow-remote: false
-  secret-key: ""
-  disable-control-panel: false
-
-auth-dir: "$($InstallDir.Replace('\', '/'))"
-
-api-keys:
-  - "$ApiKey"
-
-quota-exceeded:
-  switch-project: true
-  switch-preview-model: true
-
-request-retry: 3
-debug: true
-logging-to-file: true
-logs-max-total-size-mb: 10
-
-payload:
-  filter:
-    - models:
-        - name: "gpt-*"
-          protocol: "codex"
-      params:
-        - "reasoning"
-        - "reasoning.effort"
-"@
-    Write-FileUtf8NoBom $ConfigPath $content
-    Write-OK "Wrote config: $ConfigPath"
-}
 
 function Get-PortProcesses([int]$ResolvedPort) {
     $connections = Get-NetTCPConnection -LocalPort $ResolvedPort -ErrorAction SilentlyContinue
@@ -285,27 +250,10 @@ function Wait-PortFree([int]$ResolvedPort, [int]$TimeoutSeconds) {
     return $false
 }
 
-function Stop-CLIProxyApi([int]$ResolvedPort) {
-    Write-Step "Stopping CLIProxyAPI on port $ResolvedPort"
-    $procs = Get-PortProcesses $ResolvedPort
-    if ($procs.Count -eq 0) {
-        Write-OK 'No process is listening on the target port.'
-        return
-    }
-    foreach ($proc in $procs) {
-        if ($proc.ProcessName -eq 'cli-proxy-api' -or $proc.Path -eq $ExePath) {
-            Stop-Process -Id $proc.Id -Force -Confirm:$false
-            Write-OK "Stopped $($proc.ProcessName) pid=$($proc.Id)"
-        } else {
-            throw "Port $ResolvedPort is owned by $($proc.ProcessName) pid=$($proc.Id), not cli-proxy-api. Refusing to stop it."
-        }
-    }
-    if (-not (Wait-PortFree $ResolvedPort 10)) { throw "Port $ResolvedPort was not released in time." }
-}
-
-function Wait-ServiceReady([int]$ResolvedPort, [int]$TimeoutSeconds) {
+function Wait-ServiceReady([int]$ResolvedPort, [int]$TimeoutSeconds, [string]$HealthEndpoint) {
+    if (-not $HealthEndpoint) { $HealthEndpoint = $PMeta.HealthEndpoint }
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    $healthUrl = "http://127.0.0.1:$ResolvedPort/healthz"
+    $healthUrl = "http://127.0.0.1:$ResolvedPort$HealthEndpoint"
     while ((Get-Date) -lt $deadline) {
         try {
             Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2 | Out-Null
@@ -318,110 +266,18 @@ function Wait-ServiceReady([int]$ResolvedPort, [int]$TimeoutSeconds) {
     return $false
 }
 
-function Start-CLIProxyApi([int]$ResolvedPort) {
-    Write-Step "Starting CLIProxyAPI on port $ResolvedPort"
-    if (-not (Test-Path $ExePath)) { throw "Missing executable: $ExePath" }
-    if (-not (Test-Path $ConfigPath)) { throw "Missing config: $ConfigPath" }
-    $existing = Get-PortProcesses $ResolvedPort
-    if ($existing.Count -gt 0) {
-        Write-OK "Port $ResolvedPort is already listening."
-        return
-    }
-    $proc = Start-Process -FilePath $ExePath -ArgumentList @('-config', $ConfigPath) -WorkingDirectory $InstallDir -WindowStyle Minimized -PassThru
-    Start-Sleep -Milliseconds 500
-    if ($proc.HasExited) { throw "cli-proxy-api exited immediately with code $($proc.ExitCode)." }
-    if (-not (Wait-ServiceReady $ResolvedPort 20)) {
-        $tail = ''
-        if (Test-Path $LogPath) { $tail = (Get-Content $LogPath -Tail 30 -ErrorAction SilentlyContinue | Out-String) }
-        throw "CLIProxyAPI did not become ready on port $ResolvedPort.`n$tail"
-    }
-    Write-OK "Started cli-proxy-api pid=$($proc.Id)"
-}
-
-function Get-AuthFiles {
-    if (-not (Test-Path $InstallDir)) { return @() }
-    return @(Get-ChildItem $InstallDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'settings|test|temp' })
-}
-
-function Get-AuthStatus {
-    $authFiles = Get-AuthFiles
-    $items = @()
-    foreach ($file in $authFiles) {
-        $item = [ordered]@{
-            file = $file.Name
-            validJson = $false
-            type = $null
-            email = $null
-            expired = $null
-            disabled = $null
-            usable = $false
-            issue = $null
-        }
-        try {
-            $authJson = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-            $item.validJson = $true
-            $item.type = $authJson.type
-            $item.email = $authJson.email
-            $item.expired = $authJson.expired
-            $item.disabled = $authJson.disabled
-            if ($authJson.type -ne 'codex') { $item.issue = 'not_codex' }
-            elseif ($authJson.disabled -eq $true) { $item.issue = 'disabled' }
-            else { $item.usable = $true }
-        } catch {
-            $item.issue = 'invalid_json'
-        }
-        $items += [pscustomobject]$item
-    }
-    $usable = @($items | Where-Object { $_.usable })
-    $status = 'not_logged_in'
-    $message = 'No auth JSON found. Run login first.'
-    if ($items.Count -gt 0 -and $usable.Count -eq 0) {
-        if (@($items | Where-Object { $_.issue -eq 'disabled' }).Count -gt 0) {
-            $status = 'disabled'
-            $message = 'Codex auth JSON found but disabled=true.'
-        } elseif (@($items | Where-Object { $_.issue -eq 'not_codex' }).Count -gt 0) {
-            $status = 'invalid_type'
-            $message = 'Auth JSON found, but no enabled type=codex auth is available.'
-        } else {
-            $status = 'invalid'
-            $message = 'Auth JSON found, but it is invalid or unusable.'
-        }
-    } elseif ($usable.Count -gt 0) {
-        $status = 'logged_in'
-        $first = $usable | Select-Object -First 1
-        $identity = $first.email
-        if (-not $identity) { $identity = $first.file }
-        $message = "Logged in: $identity; usable auths=$($usable.Count)"
-        if ($first.expired) { $message += "; expires=$($first.expired)" }
-    }
-    return [pscustomobject]@{
-        status = $status
-        message = $message
-        authCount = $items.Count
-        usableCount = $usable.Count
-        auths = $items
-        suggestions = @(
-            'Check that your proxy works, then rerun install/configure with the correct -ProxyUrl.',
-            'Try device login: .\scripts\CodexToClaude.ps1 login -Device',
-            "Make sure the Codex OAuth JSON is in $InstallDir, not a nested auths folder.",
-            'Make sure the JSON has type=codex and does not have disabled=true.',
-            "Check $InstallDir/logs/main.log for upstream or OAuth errors."
-        )
-    }
-}
-
 function Write-AuthStatus([object]$Status) {
     if ($Json) {
         $Status | ConvertTo-Json -Depth 8
         return
     }
-    if ($Status.status -eq 'logged_in') { Write-OK $Status.message } else { Write-Warn $Status.message }
+    if ($Status.status -eq 'logged_in' -or $Status.status -eq 'configured') { Write-OK $Status.message } else { Write-Warn $Status.message }
     foreach ($auth in $Status.auths) {
         $safeEmail = $auth.email
         if (-not $safeEmail) { $safeEmail = '-' }
         Write-Info "auth=$($auth.file) type=$($auth.type) email=$safeEmail disabled=$($auth.disabled) usable=$($auth.usable) issue=$($auth.issue) expires=$($auth.expired)"
     }
-    if ($Status.status -ne 'logged_in') {
+    if ($Status.status -ne 'logged_in' -and $Status.status -ne 'configured') {
         Write-Info 'Recommended fixes:'
         foreach ($s in $Status.suggestions) { Write-Info "  - $s" }
     }
@@ -429,11 +285,11 @@ function Write-AuthStatus([object]$Status) {
 
 function Assert-AuthReady {
     $status = Get-AuthStatus
-    if ($status.status -ne 'logged_in') {
+    if (-not $status.usableCount -or $status.usableCount -eq 0) {
         Write-AuthStatus $status
-        throw 'No enabled Codex auth JSON found.'
+        throw 'No enabled auth found.'
     }
-    Write-OK "Enabled Codex auth files: $($status.usableCount)"
+    Write-OK "Enabled auth: $($status.usableCount)"
 }
 
 function Set-JsonProperty([object]$Object, [string]$Name, [object]$Value) {
@@ -469,26 +325,17 @@ function Configure-Claude([int]$ResolvedPort) {
     Remove-JsonProperty $settings.env 'ANTHROPIC_MODEL'
     $outJson = $settings | ConvertTo-Json -Depth 20
     Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
-    Write-OK "Updated: $ClaudeSettingsPath"
+    Write-OK "Updated: $ClaudeSettingsPath  (provider=$Provider, port=$ResolvedPort)"
 }
 
-function Invoke-Models([int]$ResolvedPort) {
-    $headers = @{ Authorization = "Bearer $ApiKey" }
-    return Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/v1/models" -Headers $headers -TimeoutSec 30
+function Get-InvokeModels {
+    $func = "$($PMeta.Prefix)-InvokeModels"
+    return & $func $args[0]
 }
 
-function Invoke-Message([int]$ResolvedPort) {
-    $headers = @{
-        'x-api-key' = $ApiKey
-        'anthropic-version' = '2023-06-01'
-        'Content-Type' = 'application/json'
-    }
-    $body = @{
-        model = $SonnetModel
-        max_tokens = 30
-        messages = @(@{ role = 'user'; content = 'say hi in one word' })
-    } | ConvertTo-Json -Depth 10
-    return Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/v1/messages" -Method Post -Headers $headers -Body $body -TimeoutSec 120
+function Get-InvokeMessage {
+    $func = "$($PMeta.Prefix)-InvokeMessage"
+    return & $func $args[0] $SonnetModel
 }
 
 function Test-ClaudeStreamJson([int]$ResolvedPort) {
@@ -498,6 +345,9 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
         Write-Warn 'claude.exe not found; skipping Claude Code stream-json check.'
         return
     }
+    $origToken = $env:ANTHROPIC_AUTH_TOKEN
+    $origUrl = $env:ANTHROPIC_BASE_URL
+    $origModel = $env:ANTHROPIC_DEFAULT_SONNET_MODEL
     $env:ANTHROPIC_AUTH_TOKEN = $ApiKey
     $env:ANTHROPIC_BASE_URL = "http://127.0.0.1:$ResolvedPort"
     $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $SonnetModel
@@ -513,6 +363,9 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
             throw "claude.exe exited with code $($proc.ExitCode). $err"
         }
     } finally {
+        $env:ANTHROPIC_AUTH_TOKEN = $origToken
+        $env:ANTHROPIC_BASE_URL = $origUrl
+        $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $origModel
         Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
     }
     $thinkingCount = ([regex]::Matches($output, 'thinking_delta')).Count
@@ -524,8 +377,8 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
 
 function Show-Status([int]$ResolvedPort) {
     Write-Step 'Status'
-    if (Test-Path $ExePath) { Write-OK "Executable: $ExePath" } else { Write-Fail "Executable missing: $ExePath" }
-    if (Test-Path $ConfigPath) { Write-OK "Config: $ConfigPath" } else { Write-Fail "Config missing: $ConfigPath" }
+    $showDetail = "$($PMeta.Prefix)-ShowStatusDetail"
+    & $showDetail $ResolvedPort
     $authStatus = Get-AuthStatus
     Write-AuthStatus $authStatus
     $procs = Get-PortProcesses $ResolvedPort
@@ -539,7 +392,7 @@ function Show-Status([int]$ResolvedPort) {
             $settings = Get-Content $ClaudeSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $baseUrl = $settings.env.ANTHROPIC_BASE_URL
             if ($baseUrl -eq "http://127.0.0.1:$ResolvedPort") { Write-OK "Claude Code base URL: $baseUrl" }
-            else { Write-Warn "Claude Code base URL: $baseUrl" }
+            else { Write-Warn "Claude Code base URL: $baseUrl (does not match port $ResolvedPort)" }
         } catch {
             Write-Warn "Unable to parse Claude settings: $ClaudeSettingsPath"
         }
@@ -551,13 +404,14 @@ function Show-Status([int]$ResolvedPort) {
 function Verify-Setup([int]$ResolvedPort) {
     Write-Step 'Verifying setup'
     Assert-AuthReady
-    Start-CLIProxyApi $ResolvedPort
-    $models = Invoke-Models $ResolvedPort
+    $startFunc = "$($PMeta.Prefix)-StartProcess"
+    & $startFunc $ResolvedPort
+    $models = Get-InvokeModels $ResolvedPort
     $modelCount = 0
     if ($models.data) { $modelCount = @($models.data).Count }
     if ($modelCount -eq 0) { throw '/v1/models returned no models.' }
     Write-OK "/v1/models returned $modelCount models"
-    $message = Invoke-Message $ResolvedPort
+    $message = Get-InvokeMessage $ResolvedPort
     $text = ''
     if ($message.content) {
         foreach ($part in $message.content) {
@@ -569,6 +423,9 @@ function Verify-Setup([int]$ResolvedPort) {
     Test-ClaudeStreamJson $ResolvedPort
 }
 
+# ============================================================
+# Project management functions (shared)
+# ============================================================
 function Get-RepoRoot { return (Split-Path -Parent $PSScriptRoot) }
 
 function Invoke-Git([string[]]$Arguments) {
@@ -615,66 +472,9 @@ function Update-Project {
     if ($before -eq $after) { Write-OK "Already up to date: $after" } else { Write-OK "Updated: $before -> $after" }
 }
 
-function Get-CLIProxyLocalVersion {
-    if (-not (Test-Path $ExePath)) { return 'missing' }
-    $info = (Get-Item $ExePath).VersionInfo
-    if ($info.ProductVersion) { return $info.ProductVersion }
-    if ($info.FileVersion) { return $info.FileVersion }
-    return 'installed'
-}
-
-function Show-CLIProxyVersion {
-    Write-Step 'CLIProxyAPI version'
-    Write-Info "Executable: $ExePath"
-    Write-Info "Local: $(Get-CLIProxyLocalVersion)"
-    try {
-        $latest = Get-CLIProxyLatestRelease
-        Write-Info "Latest: $($latest.release.tag_name)"
-        Write-Info "Asset: $($latest.asset.name)"
-    } catch {
-        Write-Warn "Unable to read latest release: $($_.Exception.Message)"
-    }
-}
-
-function Update-CLIProxyApi {
-    Write-Step 'Updating CLIProxyAPI latest release'
-    Ensure-InstallDir
-    $resolvedPort = $null
-    $wasRunning = $false
-    try {
-        $resolvedPort = Resolve-Port $false
-        $wasRunning = ((Get-PortProcesses $resolvedPort).Count -gt 0)
-        if ($wasRunning) { Stop-CLIProxyApi $resolvedPort }
-    } catch {
-        Write-Warn "Could not determine or stop running service: $($_.Exception.Message)"
-    }
-
-    $latest = Get-CLIProxyLatestRelease
-    $staged = Join-Path $InstallDir 'cli-proxy-api.new.exe'
-    if (Test-Path $staged) { Remove-Item $staged -Force }
-    Install-CLIProxyAsset $latest.asset.browser_download_url $latest.asset.name $staged
-    if (-not (Test-Path $staged)) { throw 'Downloaded CLIProxyAPI executable was not created.' }
-    $backup = $null
-    if (Test-Path $ExePath) {
-        $backup = Join-Path $InstallDir "cli-proxy-api.backup-$(Get-Date -Format 'yyyyMMddHHmmss').exe"
-        Copy-Item -Force $ExePath $backup
-        Write-Info "Backup: $backup"
-    }
-    Move-Item -Force $staged $ExePath
-    Write-OK "Updated CLIProxyAPI to latest release: $($latest.release.tag_name)"
-    if ($wasRunning -and $null -ne $resolvedPort) {
-        try {
-            Start-CLIProxyApi $resolvedPort
-        } catch {
-            if ($backup -and (Test-Path $backup)) {
-                Copy-Item -Force $backup $ExePath
-                Write-Warn 'Restored previous cli-proxy-api.exe after restart failure.'
-            }
-            throw
-        }
-    }
-}
-
+# ============================================================
+# Claude Code settings functions (shared)
+# ============================================================
 function Get-ClaudeSettings {
     if (Test-Path $ClaudeSettingsPath) { return (Get-Content $ClaudeSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json) }
     return (New-Object PSObject)
@@ -722,26 +522,42 @@ function Configure-ClaudeModels {
     Write-OK "Updated model settings: $ClaudeSettingsPath"
 }
 
+# ============================================================
+# Command dispatch
+# ============================================================
 switch ($Command) {
     'help' { Show-Help }
+
     'install' {
-        Move-LegacyInstall
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         Ensure-InstallDir
         $resolvedPort = Resolve-Port $true
         $resolvedProxy = Resolve-ProxyUrl $true
-        Download-CLIProxyApi
-        Write-Config $resolvedPort $resolvedProxy
+        $installFunc = "$($PMeta.Prefix)-InstallBinary"
+        & $installFunc
+        $writeFunc = "$($PMeta.Prefix)-WriteConfig"
+        & $writeFunc $resolvedPort $resolvedProxy
         Write-OK 'Install/config step complete. Run login, configure, restart, verify next.'
     }
+
     'login' {
-        Move-LegacyInstall
+        if (-not $PMeta.SupportsLogin) {
+            throw "Provider '$($PMeta.Name)' does not support OAuth login. Set the API key via environment variable or config."
+        }
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         Ensure-InstallDir
-        if (-not (Test-Path $ExePath)) { Download-CLIProxyApi }
+        if (-not (Test-Path $ExePath)) {
+            $installFunc = "$($PMeta.Prefix)-InstallBinary"
+            & $installFunc
+        }
         if (-not (Test-Path $ConfigPath)) { Write-Warn 'Config is missing. Run install/configure first if login fails.' }
         $loginArg = '-codex-login'
         if ($Device) { $loginArg = '-codex-device-login' }
         try {
             & $ExePath -config $ConfigPath $loginArg
+            if ($LASTEXITCODE -ne 0) {
+                throw "Login command exited with code $LASTEXITCODE. Check logs for details."
+            }
         } catch {
             Write-Fail "Login command failed: $($_.Exception.Message)"
             $status = Get-AuthStatus
@@ -750,55 +566,78 @@ switch ($Command) {
         }
         $status = Get-AuthStatus
         Write-AuthStatus $status
-        if ($status.status -ne 'logged_in') { throw 'Login finished but no usable Codex auth was found.' }
+        if ($status.status -ne 'logged_in') { throw 'Login finished but no usable auth was found.' }
     }
+
     'configure' {
         $resolvedPort = Resolve-Port $true
         $resolvedProxy = Resolve-ProxyUrl $true
         Ensure-InstallDir
-        Write-Config $resolvedPort $resolvedProxy
+        $writeFunc = "$($PMeta.Prefix)-WriteConfig"
+        & $writeFunc $resolvedPort $resolvedProxy
         Configure-Claude $resolvedPort
     }
+
     'start' {
-        Move-LegacyInstall
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         $resolvedPort = Resolve-Port $false
-        Start-CLIProxyApi $resolvedPort
+        $startFunc = "$($PMeta.Prefix)-StartProcess"
+        & $startFunc $resolvedPort
     }
+
     'stop' {
         $resolvedPort = Resolve-Port $false
-        Stop-CLIProxyApi $resolvedPort
+        $stopFunc = "$($PMeta.Prefix)-StopProcess"
+        & $stopFunc $resolvedPort
     }
+
     'restart' {
-        Move-LegacyInstall
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         $resolvedPort = Resolve-Port $false
-        Stop-CLIProxyApi $resolvedPort
-        Start-CLIProxyApi $resolvedPort
+        $stopFunc = "$($PMeta.Prefix)-StopProcess"
+        $startFunc = "$($PMeta.Prefix)-StartProcess"
+        & $stopFunc $resolvedPort
+        & $startFunc $resolvedPort
     }
+
     'status' {
-        Move-LegacyInstall
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         $resolvedPort = Resolve-Port $false
         Show-Status $resolvedPort
     }
+
     'auth-status' {
         $status = Get-AuthStatus
         Write-AuthStatus $status
-        if ($status.status -ne 'logged_in') { exit 1 }
+        if ($status.status -ne 'logged_in' -and $status.status -ne 'configured') { exit 1 }
     }
+
     'verify' {
-        Move-LegacyInstall
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         $resolvedPort = Resolve-Port $false
         Verify-Setup $resolvedPort
     }
+
     'doctor' {
-        Move-LegacyInstall
+        if ($Provider -eq 'cliproxy') { CLIProxy-MoveLegacyInstall }
         $resolvedPort = Resolve-Port $false
         Show-Status $resolvedPort
         Verify-Setup $resolvedPort
     }
+
     'project-version' { Show-ProjectVersion }
     'project-update' { Update-Project }
-    'cliproxy-version' { Show-CLIProxyVersion }
-    'cliproxy-update' { Update-CLIProxyApi }
+
+    'cliproxy-version' {
+        $showFunc = "$($PMeta.Prefix)-ShowVersion"
+        & $showFunc
+    }
+
+    'cliproxy-update' {
+        $updateFunc = "$($PMeta.Prefix)-UpdateBinary"
+        & $updateFunc
+    }
+
     'models' { Show-ClaudeModels }
     'configure-models' { Configure-ClaudeModels }
 }

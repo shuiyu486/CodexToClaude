@@ -130,5 +130,99 @@ TestCase 'Auth status JSON does not expose tokens' {
     }
 }
 
+TestCase 'OCC configure writes config.json' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-occ"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome 'oc-go-cc'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Provider occ -Port 13456 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($config.port -ne 13456) { throw "OCC config port mismatch: $($config.port)" }
+        if ($config.host -ne '127.0.0.1') { throw "OCC config host mismatch: $($config.host)" }
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:13456') { throw 'Claude base URL mismatch for OCC.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'OCC configure writes proxy_url when set' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-occ-proxy"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome 'oc-go-cc'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Provider occ -Port 13457 -ProxyUrl 'http://127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($config.proxy_url -ne 'http://127.0.0.1:7897') { throw 'proxy_url missing or mismatched in OCC config.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'OCC login throws clear message' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-occ-login"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome 'oc-go-cc'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        $null = & $Script configure -Provider occ -Port 13458 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $threw = $false
+        try {
+            & $Script login -Provider occ -InstallDir $installDir 2>&1 | Out-Null
+        } catch {
+            $threw = $true
+            if ($_.Exception.Message -notmatch 'does not support') {
+                throw "Expected clear error about login not supported. Got: $($_.Exception.Message)"
+            }
+        }
+        if (-not $threw) { throw 'Expected login to throw for OCC, but it did not.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'Both providers configure separate install dirs' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-dual"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $clipDir = Join-Path $fakeHome 'cli-proxy-api'
+    $occDir = Join-Path $fakeHome 'oc-go-cc'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Provider cliproxy -Port 18319 -ProxyUrl none -InstallDir $clipDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        & $Script configure -Provider occ -Port 13459 -ProxyUrl none -InstallDir $occDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        if (-not (Test-Path (Join-Path $clipDir 'config.yaml'))) { throw 'CLIProxy config.yaml missing.' }
+        if (-not (Test-Path (Join-Path $occDir 'config.json'))) { throw 'OCC config.json missing.' }
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:13459') { throw 'Claude base URL should point to last configured provider (OCC).' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'OCC auth-status returns configured status' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-occ-auth"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome 'oc-go-cc'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Provider occ -Port 13460 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $output = & $Script auth-status -Provider occ -InstallDir $installDir -Json 2>&1 | Out-String
+        $parsed = $output | ConvertFrom-Json
+        if ($parsed.status -ne 'not_configured') { throw "Expected not_configured, got: $($parsed.status)" }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'OCC provider syntax parses' {
+    Assert-Syntax (Join-Path $RepoRoot 'scripts\providers\occ.ps1')
+}
+
+TestCase 'CLIProxy provider syntax parses' {
+    Assert-Syntax (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1')
+}
+
 Write-Host "`nPassed: $Passed  Failed: $Failed" -ForegroundColor Cyan
 if ($Failed -gt 0) { exit 1 }
