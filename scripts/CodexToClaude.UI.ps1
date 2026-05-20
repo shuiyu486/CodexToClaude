@@ -31,29 +31,37 @@ $script:ProviderMeta = @{
 $I18N = @{
     'en-US' = @{
         'app.title' = 'CodexToClaude'
-        'app.subtitle' = 'Use Codex Plus/Pro in Claude Code'
+        'app.subtitle.cliproxy' = 'Use Codex Plus/Pro in Claude Code'
+        'app.subtitle.occ' = 'Use OpenCode Go models in Claude Code'
         'language.label' = 'Language'
         'language.zh' = '中文'
         'language.en' = 'English'
-        'status.checking' = 'Login status: checking...'
-        'status.prefix' = 'Login status: '
-        'status.unable' = 'Login status: unable to read auth status'
-        'status.failed' = 'Login status: auth check failed'
+        'status.checking.cliproxy' = 'Login status: checking...'
+        'status.checking.occ' = 'Status: checking...'
+        'status.prefix.cliproxy' = 'Login status: '
+        'status.prefix.occ' = 'Status: '
+        'status.unable.cliproxy' = 'Login status: unable to read auth status'
+        'status.unable.occ' = 'Status: unable to read auth status'
+        'status.failed.cliproxy' = 'Login status: auth check failed'
+        'status.failed.occ' = 'Status: auth check failed'
         'settings.title' = 'Connection settings'
         'field.port' = 'Port'
         'field.proxy' = 'ProxyUrl'
         'field.apiKey' = 'ApiKey'
         'field.installDir' = 'InstallDir'
         'field.settings' = 'Claude settings'
-        'hint.port' = 'Local CLIProxyAPI listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 8317.'
-        'hint.proxy' = 'Upstream proxy for Codex/OpenAI. Use http://127.0.0.1:7897, or type none for direct access.'
+        'hint.port.cliproxy' = 'Local CLIProxyAPI listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 8317.'
+        'hint.port.occ' = 'Local oc-go-cc listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 3456.'
+        'hint.proxy.cliproxy' = 'Upstream proxy for Codex/OpenAI. Use http://127.0.0.1:7897, or type none for direct access.'
+        'hint.proxy.occ' = 'Upstream proxy for OpenCode API. Use http://127.0.0.1:7897, or type none for direct access.'
         'check.device' = 'Use device login'
         'check.skipStream' = 'Skip Claude stream check'
         'wizard.title' = 'Quick start wizard'
-        'wizard.description' = 'Follow these steps for first-time setup. Each step calls the same CLI command shown in the log.'
+        'wizard.description.cliproxy' = 'Follow these steps for first-time setup. Each step calls the same CLI command shown in the log.'
+        'wizard.description.occ' = 'Follow these steps to set up OpenCode Go. Each step calls the same CLI command shown in the log.'
         'wizard.completed' = 'Quick start wizard - completed'
         'wizard.step.install' = '1. Install Codex proxy'
-        'wizard.step.installOcc' = '1. Install OpenCode Go'
+        'wizard.step.installOcc' = '1. Install & configure oc-go-cc backend'
         'wizard.step.login' = '2. Login to Codex'
         'wizard.step.configure' = '3. Configure Claude Code'
         'wizard.step.restart' = '4. Restart local service'
@@ -115,29 +123,37 @@ $I18N = @{
     }
     'zh-CN' = @{
         'app.title' = 'CodexToClaude'
-        'app.subtitle' = '在 Claude Code 中使用 Codex Plus/Pro'
+        'app.subtitle.cliproxy' = '在 Claude Code 中使用 Codex Plus/Pro'
+        'app.subtitle.occ' = '在 Claude Code 中使用 OpenCode Go 模型'
         'language.label' = '界面语言'
         'language.zh' = '中文'
         'language.en' = 'English'
-        'status.checking' = '登录状态：检查中...'
-        'status.prefix' = '登录状态：'
-        'status.unable' = '登录状态：无法读取认证状态'
-        'status.failed' = '登录状态：认证检查失败'
+        'status.checking.cliproxy' = '登录状态：检查中...'
+        'status.checking.occ' = '状态：检查中...'
+        'status.prefix.cliproxy' = '登录状态：'
+        'status.prefix.occ' = '状态：'
+        'status.unable.cliproxy' = '登录状态：无法读取认证状态'
+        'status.unable.occ' = '状态：无法读取认证状态'
+        'status.failed.cliproxy' = '登录状态：认证检查失败'
+        'status.failed.occ' = '状态：认证检查失败'
         'settings.title' = '连接设置'
         'field.port' = '端口'
         'field.proxy' = '代理地址'
         'field.apiKey' = 'API Key'
         'field.installDir' = '安装目录'
         'field.settings' = 'Claude 配置'
-        'hint.port' = 'CLIProxyAPI 本机监听端口。Claude Code 会访问 http://127.0.0.1:<Port>。示例：8317。'
-        'hint.proxy' = 'CLIProxyAPI 访问 Codex/OpenAI 上游使用的代理。示例：http://127.0.0.1:7897；直连填 none。'
+        'hint.port.cliproxy' = 'CLIProxyAPI 本机监听端口。Claude Code 会访问 http://127.0.0.1:<Port>。示例：8317。'
+        'hint.port.occ' = 'oc-go-cc 本机监听端口。Claude Code 会访问 http://127.0.0.1:<Port>。示例：3456。'
+        'hint.proxy.cliproxy' = 'CLIProxyAPI 访问 Codex/OpenAI 上游使用的代理。示例：http://127.0.0.1:7897；直连填 none。'
+        'hint.proxy.occ' = 'oc-go-cc 访问 OpenCode API 上游使用的代理。示例：http://127.0.0.1:7897；直连填 none。'
         'check.device' = '使用设备码登录'
         'check.skipStream' = '跳过 Claude stream 检查'
         'wizard.title' = '快速开始向导'
-        'wizard.description' = '首次使用按顺序执行这些步骤。每一步都会调用日志中显示的同一个 CLI 命令。'
+        'wizard.description.cliproxy' = '首次使用按顺序执行这些步骤。每一步都会调用日志中显示的同一个 CLI 命令。'
+        'wizard.description.occ' = '按顺序执行这些步骤配置 OpenCode Go。每一步都会调用日志中显示的同一个 CLI 命令。'
         'wizard.completed' = '快速开始向导 - 已完成'
         'wizard.step.install' = '1. 安装 Codex 代理'
-        'wizard.step.installOcc' = '1. 安装 OpenCode Go'
+        'wizard.step.installOcc' = '1. 安装并配置 oc-go-cc'
         'wizard.step.login' = '2. 登录 Codex'
         'wizard.step.configure' = '3. 配置 Claude Code'
         'wizard.step.restart' = '4. 重启本地服务'
@@ -313,7 +329,7 @@ function Save-UiPreferences {
     $script:Prefs.selectedProvider = $script:CurrentProvider
     $script:Prefs.lastValues.port[$script:CurrentProvider] = $portBox.Text.Trim()
     $script:Prefs.lastValues.proxyUrl = $proxyBox.Text.Trim()
-    $script:Prefs.lastValues.apiKey = ''
+    $script:Prefs.lastValues.apiKey = $apiKeyBox.Text.Trim()
     $script:Prefs.lastValues.installDir[$script:CurrentProvider] = $installDirBox.Text.Trim()
     $script:Prefs.lastValues.claudeSettingsPath = $settingsPathBox.Text.Trim()
     $script:Prefs.lastValues.opusModel[$script:CurrentProvider] = $opusModelBox.Text.Trim()
@@ -333,8 +349,25 @@ function T([string]$Key) {
     return $Key
 }
 
+function StatusT([string]$BaseKey) {
+    return T "$BaseKey.$($script:CurrentProvider)"
+}
+
 function Register-Text([object]$Control, [string]$Key) {
     $script:TextBindings += [pscustomobject]@{ Control = $Control; Key = $Key }
+}
+
+$script:DynamicTextBindings = @()
+
+function Register-DynamicText([object]$Control, [string]$BaseKey) {
+    $script:DynamicTextBindings += [pscustomobject]@{ Control = $Control; BaseKey = $BaseKey }
+}
+
+function Update-DynamicTexts {
+    foreach ($binding in $script:DynamicTextBindings) {
+        $key = "$($binding.BaseKey).$($script:CurrentProvider)"
+        [void]($binding.Control.Text = T $key)
+    }
 }
 
 function Apply-Language {
@@ -366,6 +399,9 @@ function Apply-Language {
             Set-WizardStepState $step.Id 'pending'
         }
         Layout-WizardSteps
+        Update-DynamicTexts
+        Layout-MainButtons
+        Update-StatusLabel
     } finally {
         $script:ApplyingLanguage = $false
     }
@@ -504,6 +540,9 @@ function Append-LoginHelp {
     Append-Log (T 'log.loginHelp5')
 }
 
+$script:LastAuthState = 'checking'
+$script:LastAuthMessage = ''
+
 function Refresh-AuthStatus {
     $stdout = Join-Path $env:TEMP "ctc-ui-auth-$([guid]::NewGuid().ToString()).json"
     $stderr = Join-Path $env:TEMP "ctc-ui-auth-$([guid]::NewGuid().ToString()).err"
@@ -515,18 +554,41 @@ function Refresh-AuthStatus {
         if (Test-Path $stdout) { $raw = Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
         if ($raw) {
             $status = $raw | ConvertFrom-Json
-            [void]($loginStatusLabel.Text = (T 'status.prefix') + $status.message)
-            if ($status.status -eq 'logged_in' -or $status.status -eq 'configured') { [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen) }
-            else { [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange) }
+            $script:LastAuthState = 'done'
+            $script:LastAuthMessage = $status.message
+            Update-StatusLabel
         } else {
-            [void]($loginStatusLabel.Text = T 'status.unable')
-            [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange)
+            $script:LastAuthState = 'unable'
+            $script:LastAuthMessage = ''
+            Update-StatusLabel
         }
     } catch {
-        [void]($loginStatusLabel.Text = T 'status.failed')
-        [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkRed)
+        $script:LastAuthState = 'failed'
+        $script:LastAuthMessage = ''
+        Update-StatusLabel
     } finally {
         Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Update-StatusLabel {
+    switch ($script:LastAuthState) {
+        'done' {
+            [void]($loginStatusLabel.Text = (StatusT 'status.prefix') + $script:LastAuthMessage)
+            [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen)
+        }
+        'unable' {
+            [void]($loginStatusLabel.Text = StatusT 'status.unable')
+            [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkOrange)
+        }
+        'failed' {
+            [void]($loginStatusLabel.Text = StatusT 'status.failed')
+            [void]($loginStatusLabel.ForeColor = [System.Drawing.Color]::DarkRed)
+        }
+        default {
+            [void]($loginStatusLabel.Text = StatusT 'status.checking')
+            [void]($loginStatusLabel.ForeColor = [System.Drawing.SystemColors]::ControlText)
+        }
     }
 }
 
@@ -650,9 +712,9 @@ $title = New-Label ("$(T 'app.title') $(Get-ProjectVersion)") 16 14 260 26
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($title)
 
-$subtitle = New-Label (T 'app.subtitle') 285 18 380 22
+$subtitle = New-Label (T 'app.subtitle.cliproxy') 285 18 380 22
 $subtitle.ForeColor = [System.Drawing.Color]::DimGray
-Register-Text $subtitle 'app.subtitle'
+Register-DynamicText $subtitle 'app.subtitle'
 $form.Controls.Add($subtitle)
 
 $languageLabel = New-Label (T 'language.label') 690 18 80 22
@@ -665,7 +727,7 @@ $languageBox.Location = New-Object System.Drawing.Point(775, 14)
 $languageBox.Size = New-Object System.Drawing.Size(160, 24)
 $form.Controls.Add($languageBox)
 
-$loginStatusLabel = New-Label (T 'status.checking') 16 48 920 24
+$loginStatusLabel = New-Label (StatusT 'status.checking') 16 48 920 24
 $form.Controls.Add($loginStatusLabel)
 
 # Provider (model source) selector - prominent GroupBox
@@ -725,18 +787,18 @@ $settingsGroup.Controls.Add((New-Label (T 'field.port') 14 30 120 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.port'
 $portBox = New-TextBox ($script:Prefs.lastValues.port[$script:CurrentProvider]) 140 26 120
 $settingsGroup.Controls.Add($portBox)
-$portHint = New-Label (T 'hint.port') 275 30 630 22
+$portHint = New-Label (T 'hint.port.cliproxy') 275 26 630 22
 $portHint.ForeColor = [System.Drawing.Color]::DimGray
-Register-Text $portHint 'hint.port'
+Register-DynamicText $portHint 'hint.port'
 $settingsGroup.Controls.Add($portHint)
 
 $settingsGroup.Controls.Add((New-Label (T 'field.proxy') 14 64 120 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.proxy'
 $proxyBox = New-TextBox $script:Prefs.lastValues.proxyUrl 140 60 260
 $settingsGroup.Controls.Add($proxyBox)
-$proxyHint = New-Label (T 'hint.proxy') 415 64 490 22
+$proxyHint = New-Label (T 'hint.proxy.cliproxy') 415 60 490 36
 $proxyHint.ForeColor = [System.Drawing.Color]::DimGray
-Register-Text $proxyHint 'hint.proxy'
+Register-DynamicText $proxyHint 'hint.proxy'
 $settingsGroup.Controls.Add($proxyHint)
 
 $settingsGroup.Controls.Add((New-Label (T 'field.apiKey') 14 98 120 22))
@@ -777,9 +839,9 @@ $wizardGroup.SuspendLayout()
 Register-Text $wizardGroup 'wizard.title'
 $form.Controls.Add($wizardGroup)
 
-$wizardDescription = New-Label (T 'wizard.description') 14 24 420 38
+$wizardDescription = New-Label (T 'wizard.description.cliproxy') 14 24 420 38
 $wizardDescription.ForeColor = [System.Drawing.Color]::DimGray
-Register-Text $wizardDescription 'wizard.description'
+Register-DynamicText $wizardDescription 'wizard.description'
 $wizardGroup.Controls.Add($wizardDescription)
 
 $wizardY = 70
@@ -811,20 +873,38 @@ $mainGroup.SuspendLayout()
 Register-Text $mainGroup 'main.title'
 $form.Controls.Add($mainGroup)
 
-$mainButtons = @(
-    @('btn.install', 16, 34, 'install', $true),
-    @('btn.login', 104, 34, 'login', $false),
-    @('btn.configure', 192, 34, 'configure', $true),
-    @('btn.restart', 290, 34, 'restart', $false),
-    @('btn.verify', 365, 34, 'verify', $false)
+$script:MainButtons = @{}
+$mainButtonDefs = @(
+    @('btn.install', 'install', $true),
+    @('btn.login', 'login', $false),
+    @('btn.configure', 'configure', $true),
+    @('btn.restart', 'restart', $false),
+    @('btn.verify', 'verify', $false)
 )
-foreach ($b in $mainButtons) {
-    $btn = New-Button (T $b[0]) $b[1] $b[2] 78
+foreach ($b in $mainButtonDefs) {
+    $btn = New-Button (T $b[0]) 0 0 78
     Register-Text $btn $b[0]
-    $cmd = $b[3]
-    $need = [bool]$b[4]
+    $cmd = $b[1]
+    $need = [bool]$b[2]
     $btn.Add_Click({ Run-Command $cmd $need | Out-Null }.GetNewClosure())
     $mainGroup.Controls.Add($btn)
+    $script:MainButtons[$cmd] = @{ Btn = $btn }
+}
+
+function Layout-MainButtons {
+    $btnOrder = @('install', 'login', 'configure', 'restart', 'verify')
+    $x = 16
+    foreach ($cmd in $btnOrder) {
+        $entry = $script:MainButtons[$cmd]
+        if (-not $entry) { continue }
+        $btn = $entry.Btn
+        $isLoginForOcc = ($cmd -eq 'login' -and $script:CurrentProvider -eq 'occ')
+        [void]($btn.Visible = -not $isLoginForOcc)
+        if (-not $isLoginForOcc) {
+            $btn.Location = New-Object System.Drawing.Point($x, 34)
+            $x += 88
+        }
+    }
 }
 
 $modelsGroup = New-Object System.Windows.Forms.GroupBox
@@ -962,6 +1042,8 @@ function Switch-Provider([string]$NewProvider) {
             }
         }
         Layout-WizardSteps
+        Update-DynamicTexts
+        Layout-MainButtons
         Save-UiPreferences
         Refresh-AuthStatus
     } catch {
@@ -983,6 +1065,7 @@ $form.Add_Shown({
     $form.BeginInvoke([System.Action]{
         Update-ProviderButtons
         Layout-WizardSteps
+        Layout-MainButtons
         $deviceCheck.Visible = $script:ProviderMeta[$script:CurrentProvider].SupportsLogin
         Refresh-AuthStatus
         if ($script:Prefs.settingsLoadFailed) { Append-Log (T 'log.settingsFallback') }

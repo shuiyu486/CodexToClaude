@@ -90,6 +90,27 @@ function Write-Warn([string]$Message) { Write-Host ("    [!!] " + $Message) -For
 function Write-Fail([string]$Message) { Write-Host ("    [X] " + $Message) -ForegroundColor Red }
 function Write-Info([string]$Message) { Write-Host ("    .. " + $Message) -ForegroundColor Gray }
 
+function Get-GitHubReleaseFallback([string]$Repo, [string]$AssetRegex, [string[]]$NameCandidates) {
+    try {
+        $atom = Invoke-WebRequest -Uri "https://github.com/$Repo/releases.atom" -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 30
+        $tagMatch = [regex]::Match($atom.Content, '<link rel="alternate" type="text/html" href="https://github\.com/[^/]+/[^/]+/releases/tag/([^"]+)"')
+        if (-not $tagMatch.Success) { return $null }
+        $tag = $tagMatch.Groups[1].Value
+        $release = [pscustomobject]@{ tag_name = $tag }
+        foreach ($candidate in $NameCandidates) {
+            $url = "https://github.com/$Repo/releases/download/$tag/$candidate"
+            try {
+                $response = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 15
+                if ($response.StatusCode -eq 200) {
+                    $asset = [pscustomobject]@{ name = $candidate; browser_download_url = $url }
+                    return [pscustomobject]@{ release = $release; asset = $asset }
+                }
+            } catch { }
+        }
+    } catch { }
+    return $null
+}
+
 function Get-ProjectVersion {
     $versionPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION'
     if (-not (Test-Path $versionPath)) { return 'v0.0.0.0' }
@@ -101,7 +122,23 @@ function Get-ProjectVersion {
 function Write-FileUtf8NoBom([string]$Path, [string]$Content) {
     $dir = Split-Path -Parent $Path
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
-    [System.IO.File]::WriteAllText($Path, $Content, [System.Text.Encoding]::UTF8)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
+function ConvertTo-JsonIndent2([object]$InputObject, [int]$MaxDepth) {
+    $json = $InputObject | ConvertTo-Json -Depth $MaxDepth
+    $lines = $json -split "`r`n"
+    $level = 0
+    $result = foreach ($line in $lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '') { continue }
+        if ($trimmed -match '^[}\]]') { $level = [Math]::Max(0, $level - 1) }
+        $indented = ('  ' * $level) + $trimmed
+        if ($trimmed -match '[{\[]$') { $level++ }
+        $indented
+    }
+    return ($result -join "`r`n")
 }
 
 function Show-Help {
@@ -321,9 +358,17 @@ function Configure-Claude([int]$ResolvedPort) {
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' ($OpusModel -replace '\(.*\)$', '')
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
-    Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'high'
+    if ($Provider -eq 'occ') {
+        Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'max'
+    } else {
+        if ($Provider -eq 'occ') {
+        Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'max'
+    } else {
+        Remove-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL'
+    }
+    }
     Remove-JsonProperty $settings.env 'ANTHROPIC_MODEL'
-    $outJson = $settings | ConvertTo-Json -Depth 20
+    $outJson = ConvertTo-JsonIndent2 $settings 20
     Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
     Write-OK "Updated: $ClaudeSettingsPath  (provider=$Provider, port=$ResolvedPort)"
 }
@@ -517,7 +562,7 @@ function Configure-ClaudeModels {
     if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Force $claudeDir | Out-Null }
     $settings = Get-ClaudeSettings
     Set-ClaudeModelEnv $settings
-    $outJson = $settings | ConvertTo-Json -Depth 20
+    $outJson = ConvertTo-JsonIndent2 $settings 20
     Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
     Write-OK "Updated model settings: $ClaudeSettingsPath"
 }

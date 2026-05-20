@@ -33,10 +33,17 @@ function CLIProxy-GetLatestRelease {
     $headers = @{ 'User-Agent' = 'CodexToClaude' }
     if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
     elseif ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing -Headers $headers -TimeoutSec 30
-    $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
-    if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
-    return [pscustomobject]@{ release = $release; asset = $asset }
+    try {
+        $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest' -UseBasicParsing -Headers $headers -TimeoutSec 30
+        $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '(amd64|x64|x86_64)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
+        if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
+        return [pscustomobject]@{ release = $release; asset = $asset }
+    } catch {
+        if ($_.Exception.Message -notmatch '403|Forbidden') { throw }
+        $result = Get-GitHubReleaseFallback 'router-for-me/CLIProxyAPI' '(windows|win).*(amd64|x64|x86_64).*\.(zip|exe)$' @('cli-proxy-api.exe', 'cli-proxy-api-windows-amd64.exe', 'CLIProxyAPI-windows-amd64.exe', 'cli-proxy-api-windows-amd64.zip', 'CLIProxyAPI-windows-amd64.zip')
+        if ($result) { return $result }
+        throw
+    }
 }
 
 function CLIProxy-InstallAsset([string]$DownloadUrl, [string]$AssetName, [string]$DestinationPath) {
@@ -210,15 +217,26 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
         Write-OK "Port $ResolvedPort is already listening."
         return
     }
-    $proc = Start-Process -FilePath $ExePath -ArgumentList @('-config', $ConfigPath) -WorkingDirectory $InstallDir -WindowStyle Minimized -PassThru
-    Start-Sleep -Milliseconds 500
-    if ($proc.HasExited) { throw "cli-proxy-api exited immediately with code $($proc.ExitCode)." }
-    if (-not (Wait-ServiceReady $ResolvedPort 20 '/healthz')) {
-        $tail = ''
-        if (Test-Path $LogPath) { $tail = (Get-Content $LogPath -Tail 30 -ErrorAction SilentlyContinue | Out-String) }
-        throw "CLIProxyAPI did not become ready on port $ResolvedPort.`n$tail"
+    $stderr = Join-Path $env:TEMP "cliproxystart-$([guid]::NewGuid().ToString()).err"
+    try {
+        $proc = Start-Process -FilePath $ExePath -ArgumentList @('-config', $ConfigPath) -WorkingDirectory $InstallDir -WindowStyle Minimized -PassThru -RedirectStandardError $stderr
+        Start-Sleep -Milliseconds 500
+        if ($proc.HasExited) {
+            $errText = ''
+            if (Test-Path $stderr) { $errText = Get-Content $stderr -Raw -ErrorAction SilentlyContinue }
+            $detail = if ($errText) { "`n$errText" } else { ' (no output captured)' }
+            throw "cli-proxy-api exited immediately with code $($proc.ExitCode).$detail"
+        }
+        if (-not (Wait-ServiceReady $ResolvedPort 20 '/healthz')) {
+            $tail = ''
+            if (Test-Path $stderr) { $tail = (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) }
+            if (-not $tail -and (Test-Path $LogPath)) { $tail = (Get-Content $LogPath -Tail 30 -ErrorAction SilentlyContinue | Out-String) }
+            throw "CLIProxyAPI did not become ready on port $ResolvedPort.`n$tail"
+        }
+        Write-OK "Started cli-proxy-api pid=$($proc.Id)"
+    } finally {
+        Remove-Item $stderr -Force -ErrorAction SilentlyContinue
     }
-    Write-OK "Started cli-proxy-api pid=$($proc.Id)"
 }
 
 function CLIProxy-StopProcess([int]$ResolvedPort) {

@@ -6,10 +6,17 @@ function OCC-GetLatestRelease {
     $headers = @{ 'User-Agent' = 'CodexToClaude' }
     if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
     elseif ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/samueltuyizere/oc-go-cc/releases/latest' -UseBasicParsing -Headers $headers -TimeoutSec 30
-    $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
-    if (-not $asset) { throw 'No Windows asset found in latest oc-go-cc release.' }
-    return [pscustomobject]@{ release = $release; asset = $asset }
+    try {
+        $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/samueltuyizere/oc-go-cc/releases/latest' -UseBasicParsing -Headers $headers -TimeoutSec 30
+        $asset = $release.assets | Where-Object { $_.name -match '(windows|win)' -and $_.name -match '\.(zip|exe)$' } | Select-Object -First 1
+        if (-not $asset) { throw 'No Windows asset found in latest oc-go-cc release.' }
+        return [pscustomobject]@{ release = $release; asset = $asset }
+    } catch {
+        if ($_.Exception.Message -notmatch '403|Forbidden') { throw }
+        $result = Get-GitHubReleaseFallback 'samueltuyizere/oc-go-cc' '(windows|win).*\.(zip|exe)$' @('oc-go-cc_windows-amd64.exe', 'oc-go-cc_windows-arm64.exe', 'oc-go-cc.exe', 'oc-go-cc-windows-amd64.exe', 'oc-go-cc-windows-amd64.zip')
+        if ($result) { return $result }
+        throw
+    }
 }
 
 function OCC-InstallAsset([string]$DownloadUrl, [string]$AssetName, [string]$DestinationPath) {
@@ -59,13 +66,92 @@ function OCC-WriteConfig([int]$ResolvedPort, [string]$ResolvedProxyUrl) {
         host = '127.0.0.1'
         port = $ResolvedPort
         api_key = $key
+        pid_file = (Join-Path $InstallDir 'oc-go-cc.pid')
+        hot_reload = $false
+        models = [ordered]@{
+            default = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.7
+                max_tokens = 4096
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+            background = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.5
+                max_tokens = 2048
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+            think = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.7
+                max_tokens = 8192
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+            complex = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.7
+                max_tokens = 4096
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+            long_context = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.7
+                max_tokens = 16384
+                context_threshold = 1000000
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+            fast = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.7
+                max_tokens = 4096
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+        }
+        fallbacks = [ordered]@{
+            default = @(
+                [ordered]@{ provider = 'opencode-go'; model_id = 'deepseek-v4-pro'; reasoning_effort = 'max'; thinking = [ordered]@{ type = 'enabled' } }
+                [ordered]@{ provider = 'opencode-go'; model_id = 'deepseek-v4-pro'; reasoning_effort = 'max'; thinking = [ordered]@{ type = 'enabled' } }
+            )
+            think = @(
+                [ordered]@{ provider = 'opencode-go'; model_id = 'deepseek-v4-pro'; reasoning_effort = 'max'; thinking = [ordered]@{ type = 'enabled' } }
+            )
+            complex = @(
+                [ordered]@{ provider = 'opencode-go'; model_id = 'deepseek-v4-pro'; reasoning_effort = 'max'; thinking = [ordered]@{ type = 'enabled' } }
+            )
+            long_context = @(
+                [ordered]@{ provider = 'opencode-go'; model_id = 'deepseek-v4-pro'; reasoning_effort = 'max'; thinking = [ordered]@{ type = 'enabled' } }
+            )
+            fast = @(
+                [ordered]@{ provider = 'opencode-go'; model_id = 'deepseek-v4-pro'; reasoning_effort = 'max'; thinking = [ordered]@{ type = 'enabled' } }
+            )
+        }
+        opencode_go = [ordered]@{
+            base_url = 'https://opencode.ai/zen/go/v1/chat/completions'
+            timeout_ms = 300000
+        }
+        logging = [ordered]@{
+            level = 'info'
+            requests = $true
+        }
     }
     if ($ResolvedProxyUrl -ne '') {
         $config.proxy_url = $ResolvedProxyUrl
     }
     $dir = Split-Path -Parent $ConfigPath
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
-    $json = $config | ConvertTo-Json -Depth 5
+    $json = $config | ConvertTo-Json -Depth 10
     Write-FileUtf8NoBom $ConfigPath $json
     Write-OK "Wrote oc-go-cc config: $ConfigPath"
 }
@@ -124,13 +210,27 @@ function OCC-StartProcess([int]$ResolvedPort) {
         Write-OK "Port $ResolvedPort is already listening."
         return
     }
-    $proc = Start-Process -FilePath $ExePath -ArgumentList @('serve', '-config', $ConfigPath, '--port', $ResolvedPort) -WorkingDirectory $InstallDir -WindowStyle Minimized -PassThru
-    Start-Sleep -Milliseconds 500
-    if ($proc.HasExited) { throw "oc-go-cc exited immediately with code $($proc.ExitCode)." }
-    if (-not (Wait-ServiceReady $ResolvedPort 20 '/health')) {
-        throw "oc-go-cc did not become ready on port $ResolvedPort."
+    $stdout = Join-Path $env:TEMP "occ-start-$([guid]::NewGuid().ToString()).out"
+    $stderr = Join-Path $env:TEMP "occ-start-$([guid]::NewGuid().ToString()).err"
+    try {
+        $proc = Start-Process -FilePath $ExePath -ArgumentList @('serve', '--config', $ConfigPath, '--port', $ResolvedPort) -WorkingDirectory $InstallDir -WindowStyle Minimized -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        Start-Sleep -Milliseconds 500
+        if ($proc.HasExited) {
+            $errText = ''
+            if (Test-Path $stderr) { $errText = Get-Content $stderr -Raw -ErrorAction SilentlyContinue }
+            if (-not $errText -and (Test-Path $stdout)) { $errText = Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
+            $detail = if ($errText) { "`n$errText" } else { ' (no output captured)' }
+            throw "oc-go-cc exited immediately with code $($proc.ExitCode).$detail"
+        }
+        if (-not (Wait-ServiceReady $ResolvedPort 20 '/health')) {
+            $errText = ''
+            if (Test-Path $stderr) { $errText = Get-Content $stderr -Raw -ErrorAction SilentlyContinue }
+            throw "oc-go-cc did not become ready on port $ResolvedPort.`n$errText"
+        }
+        Write-OK "Started oc-go-cc pid=$($proc.Id)"
+    } finally {
+        Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
     }
-    Write-OK "Started oc-go-cc pid=$($proc.Id)"
 }
 
 function OCC-StopProcess([int]$ResolvedPort) {
@@ -157,8 +257,14 @@ function OCC-StopProcess([int]$ResolvedPort) {
 }
 
 function OCC-InvokeModels([int]$ResolvedPort) {
-    $headers = @{ Authorization = "Bearer $ApiKey" }
-    return Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/v1/models" -Headers $headers -TimeoutSec 30
+    # oc-go-cc does not expose /v1/models; verify server is up via /health
+    try {
+        $health = Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/health" -TimeoutSec 10
+    } catch {
+        throw "oc-go-cc health check failed on port $ResolvedPort. Is the server running?"
+    }
+    # Return synthetic models list for verify compatibility
+    return [pscustomobject]@{ data = @([pscustomobject]@{ id = 'oc-go-cc-proxy' }) }
 }
 
 function OCC-InvokeMessage([int]$ResolvedPort, [string]$Model) {
@@ -172,7 +278,17 @@ function OCC-InvokeMessage([int]$ResolvedPort, [string]$Model) {
         max_tokens = 30
         messages = @(@{ role = 'user'; content = 'say hi in one word' })
     } | ConvertTo-Json -Depth 10
-    return Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/v1/messages" -Method Post -Headers $headers -Body $body -TimeoutSec 120
+    try {
+        return Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/v1/messages" -Method Post -Headers $headers -Body $body -TimeoutSec 120
+    } catch [System.Net.WebException] {
+        $respBody = ''
+        try {
+            $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+            $respBody = $reader.ReadToEnd()
+            $reader.Close()
+        } catch { }
+        throw "/v1/messages failed (model: $Model): $respBody"
+    }
 }
 
 function OCC-GetLocalVersion {

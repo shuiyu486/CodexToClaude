@@ -146,11 +146,28 @@ payload:
     "host": "127.0.0.1",
     "port": <用户提供>,
     "api_key": "<用户提供或 ${OC_GO_CC_API_KEY}>",
-    "proxy_url": "<用户提供；直连时省略>"
+    "pid_file": "<InstallDir>\\oc-go-cc.pid",
+    "hot_reload": false,
+    "models": {
+        "default": { "provider": "opencode-go", "model_id": "deepseek-v4-pro", ... },
+        "background": { ... },
+        "think": { ... },
+        "complex": { ... },
+        "long_context": { ..., "context_threshold": 1000000 },
+        "fast": { ... }
+    },
+    "fallbacks": { ... },
+    "opencode_go": { "base_url": "...", "timeout_ms": 300000 },
+    "proxy_url": "<用户提供；直连时省略>",
+    "logging": { "level": "info", "requests": true }
 }
 ```
 
 - `api_key`：用户通过 GUI 的 ApiKey 字段或 CLI 的 `-ApiKey` 提供时写入真实值；否则写入 `${OC_GO_CC_API_KEY}` 占位符（oc-go-cc 在运行时通过环境变量插值解析）。
+- `models`：6 个场景（default/think/complex/background/long_context/fast）→ OpenCode Go model_id 的映射。所有场景默认使用 `deepseek-v4-pro`，均配置 `reasoning_effort: "max"` 和 `thinking: { type: "enabled" }`。
+- `fallbacks`：每个场景的故障转移链，同样指向 `deepseek-v4-pro`（利用 oc-go-cc 内置熔断器重试）。
+- `context_threshold`：超过 1M tokens 触发 long_context 场景路由。
+- `opencode_go.base_url`：上游 OpenCode Go API 端点。
 - OCC 不支持 `payload.filter`，无 reasoning 过滤配置。
 
 ## Claude Code settings 合并规则
@@ -170,7 +187,7 @@ payload:
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL`
 - `ANTHROPIC_DEFAULT_OPUS_MODEL_NAME`
 - `ANTHROPIC_DEFAULT_SONNET_MODEL_NAME`
-- `CLAUDE_CODE_EFFORT_LEVEL`
+- `CLAUDE_CODE_EFFORT_LEVEL`（OCC 后端设为 `"max"`；CLIProxy 后端移除此键以配合 payload.filter 过滤 reasoning 参数）（OCC 后端设为 `"max"`；CLIProxy 后端移除此键以配合 payload.filter 过滤 reasoning 参数）
 
 保留 `statusLine`、`permissions`、`language` 等其它字段。
 
