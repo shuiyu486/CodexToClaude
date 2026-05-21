@@ -68,6 +68,7 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }
+        if ($config -notmatch '(?m)^passthrough-headers:\s*true\r?$') { throw 'CLIProxy should forward upstream response headers.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-5.5') { throw 'Default Opus model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-5.4') { throw 'Default Sonnet model name mismatch.' }
     } finally {

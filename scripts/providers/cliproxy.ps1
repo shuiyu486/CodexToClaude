@@ -126,6 +126,8 @@ auth-dir: "$($InstallDir.Replace('\', '/'))"
 api-keys:
   - "$ApiKey"
 
+passthrough-headers: true
+
 quota-exceeded:
   switch-project: true
   switch-preview-model: true

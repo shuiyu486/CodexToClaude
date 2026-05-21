@@ -5,7 +5,7 @@
 [![English](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://learn.microsoft.com/en-us/powershell/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.0.5-lightgrey.svg)](./VERSION)
+[![Version](https://img.shields.io/badge/version-v1.0.0.6-lightgrey.svg)](./VERSION)
 
 CodexToClaude 通过本地代理把你的 Codex Plus/Pro 或 OpenCode Go 转换成本机 Anthropic-compatible API，让 Claude Code 直接使用。Windows 优先，GUI 一键操作，支持多后端切换。
 
@@ -20,7 +20,7 @@ Claude Code → http://127.0.0.1:<Port> → CLIProxyAPI → Codex OAuth → Code
 - 🔀 **多后端切换** — Codex (Codex Plus/Pro) 和 OpenCode Go 一键切换，无需重启
 - 🧙 **快速开始向导** — Install → Login → Configure → Restart → Verify，OCC 后端自动隐藏登录步骤
 - 🔐 **OAuth 设备码登录** — Codex 支持设备码登录；OCC 直接在界面输入 API Key
-- 🧪 **端到端验证** — `/v1/models`、`/v1/messages` 和 Claude Code stream-json 自动检查
+- 🧪 **端到端验证** — `/v1/models`、`/v1/messages` 和 Claude Code stream-json 自动检查；CLIProxy 透传上游限额 headers 供状态栏使用
 - 📦 **版本管理** — GUI 内查看/更新项目和后端二进制，无需手动操作
 - 🔄 **自动迁移** — 从旧版 `~\.cli-proxy-api` 自动迁移到项目内目录
 

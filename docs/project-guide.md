@@ -118,6 +118,7 @@ host: "127.0.0.1"
 port: <用户提供>
 proxy-url: "<按 ProxyMode 规范化后的代理；直连时省略>"
 auth-dir: "$InstallDir"
+passthrough-headers: true
 ```
 
 `payload.filter` 默认保留：
@@ -132,6 +133,8 @@ payload:
         - "reasoning"
         - "reasoning.effort"
 ```
+
+`passthrough-headers: true` 用于把上游 `X-Codex-*` / rate-limit headers 透传给 Claude Code 或状态栏插件，供用量限制显示和调试使用。
 
 原因：Claude Code TUI 显示 Codex thinking 流时，中文片段可能重复字符；过滤 reasoning 后正常回答文本不受影响。
 
