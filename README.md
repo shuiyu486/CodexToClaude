@@ -2,11 +2,20 @@
 
 > Turn Codex Plus/Pro and OpenCode Go into a local Anthropic-compatible API for Claude Code.
 
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](./README.md)
-[![中文](https://img.shields.io/badge/lang-中文-red.svg)](./README.zh-CN.md)
-[![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://learn.microsoft.com/en-us/powershell/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.0.7-lightgrey.svg)](./VERSION)
+<p align="center">
+  <strong>📖 Documentation:</strong>
+  <a href="./README.md"><strong>English</strong></a>
+  &nbsp;|&nbsp;
+  <a href="./README.zh-CN.md"><strong>中文文档</strong></a>
+</p>
+
+<p align="center">
+  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/lang-English-blue.svg"></a>
+  <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
+  <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.8-lightgrey.svg"></a>
+</p>
 
 CodexToClaude is a Windows-first local proxy setup tool. It installs, configures, starts, and verifies backend proxies, then points Claude Code at your local Anthropic-compatible endpoint.
 
@@ -15,25 +24,23 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
                                      \-> oc-go-cc    -> OpenCode Go models
 ```
 
-## Who is this for?
+## 🎯 Who is this for?
 
 - You have Codex Plus/Pro and want to use Codex models from Claude Code.
 - You have an OpenCode Go API key and want to use OpenCode Go models from Claude Code.
 - You do not want to manually maintain proxy config files, Claude Code `settings.json`, startup commands, and verification steps.
 
-## Highlights
+## ✨ Highlights
 
-| Feature | What it does |
-|---------|--------------|
-| Two backends | Switch between Codex and OpenCode Go from one UI. |
-| GUI setup | Double-click `CodexToClaude-GUI.cmd` and follow the wizard: install, login, configure, restart, verify. |
-| Claude Code auto-config | Merges only the target `env` values into `~/.claude/settings.json`, preserving statusLine, permissions, language, and other settings. |
-| Proxy modes | Supports `Auto`, `Http`, `Socks5`, and `Direct`; `Auto` can retry with SOCKS5 after HTTP timeout-style failures. |
-| End-to-end verification | Checks `/v1/models`, `/v1/messages`, and Claude Code stream-json. |
-| Version management | View and update the project and provider binaries from either the GUI or CLI. |
-| Safe defaults | OAuth JSON, tokens, API keys, and logs are git-ignored, and scripts do not print real secrets. |
+- 🚀 **Guided GUI setup** — Double-click `CodexToClaude-GUI.cmd` and follow the wizard: install, login, configure, restart, verify.
+- 🔀 **Two model sources** — Switch between Codex and OpenCode Go from one UI without duplicating setup logic.
+- 🧩 **Claude Code auto-config** — Merges only target `env` values into `~/.claude/settings.json`, preserving statusLine, permissions, language, and other settings.
+- 🌐 **Proxy modes built in** — Supports `Auto`, `Http`, `Socks5`, and `Direct`; `Auto` can retry with SOCKS5 after HTTP timeout-style failures.
+- 🧪 **End-to-end verification** — Checks `/v1/models`, `/v1/messages`, and Claude Code stream-json.
+- 📦 **Version management** — View and update the project and provider binaries from either the GUI or CLI.
+- 🔐 **Safe defaults** — OAuth JSON, tokens, API keys, and logs are git-ignored, and scripts do not print real secrets.
 
-## Screenshots
+## 🖼️ Screenshots
 
 Codex backend:
 
@@ -43,7 +50,7 @@ OpenCode Go backend:
 
 ![OpenCode Go backend UI](docs/assets/gui-opencode-go.png)
 
-## Requirements
+## 📋 Requirements
 
 | Requirement | Notes |
 |-------------|-------|
@@ -63,7 +70,7 @@ Decide these values before setup:
 
 If you do not need a proxy, explicitly choose `Direct`; do not leave `ProxyUrl` empty and expect it to mean direct access.
 
-## GUI installation guide
+## 🚀 GUI installation guide
 
 ### 1. Download the project
 
@@ -161,7 +168,7 @@ http://127.0.0.1:3456   # OpenCode Go
 
 Restart Claude Code, then use the configured Opus / Sonnet / Haiku model names.
 
-## CLI installation guide
+## 🖥️ CLI installation guide
 
 Prefer the terminal? You can skip the GUI.
 
@@ -202,7 +209,7 @@ $env:OC_GO_CC_API_KEY = "your OpenCode Go API key"
 
 Legacy shortcuts are still accepted: `-ProxyUrl none` / `-ProxyUrl direct` are normalized to direct mode.
 
-## Common commands
+## ⚙️ Common commands
 
 ```powershell
 # Status
@@ -230,7 +237,7 @@ Legacy shortcuts are still accepted: `-ProxyUrl none` / `-ProxyUrl direct` are n
 .\scripts\CodexToClaude.ps1 configure-models -OpusModel "gpt-5.5" -SonnetModel "gpt-5.4" -HaikuModel "gpt-5.4"
 ```
 
-## Files and directories
+## 📁 Files and directories
 
 CodexToClaude may create or update these files:
 
@@ -266,7 +273,7 @@ CodexToClaude/
 └── README.zh-CN.md
 ```
 
-## Troubleshooting
+## 🧯 Troubleshooting
 
 | Problem | What to try |
 |---------|-------------|
@@ -277,7 +284,7 @@ CodexToClaude/
 | Claude Code still uses old models | Click `Configure`, click `Restart`, then restart Claude Code. |
 | Port is already in use | Pick another port, then rerun `Configure` + `Restart` + `Verify`. |
 
-## Usage limit status line
+## 📊 Usage limit status line
 
 The Codex backend enables `passthrough-headers: true` in CLIProxyAPI config, forwarding upstream `X-Codex-Primary-*` and `X-Codex-Secondary-*` limit headers to Claude Code clients.
 
@@ -289,11 +296,11 @@ A compatible status line plugin can use those headers to show:
 
 CodexToClaude only forwards headers; rendering usage limits is handled by your status line plugin.
 
-## About thinking output
+## 💭 About thinking output
 
 CodexToClaude filters `reasoning` / `reasoning.effort` from CLIProxyAPI requests by default. This avoids duplicated Chinese characters that can appear in some Codex thinking streams inside the Claude Code TUI. Normal answer text is unaffected.
 
-## Security notes
+## 🛡️ Security notes
 
 Do not commit or publish:
 
@@ -309,7 +316,7 @@ git status
 git diff
 ```
 
-## Development and tests
+## 🧪 Development and tests
 
 ```powershell
 # Automated tests
@@ -322,13 +329,13 @@ git diff
 
 For maintainer details, see [`docs/project-guide.md`](docs/project-guide.md).
 
-## Upstream projects
+## 🔗 Upstream projects
 
 CodexToClaude builds on these open-source projects:
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI): local Anthropic-compatible API and Codex OAuth proxy conversion.
 - [oc-go-cc](https://github.com/samueltuyizere/oc-go-cc): Anthropic / OpenAI format conversion proxy for OpenCode Go.
 
-## License
+## 📄 License
 
 MIT License

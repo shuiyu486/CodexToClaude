@@ -2,11 +2,20 @@
 
 > 把 Codex Plus/Pro 和 OpenCode Go 转成本机 Anthropic-compatible API，让 Claude Code 直接使用。
 
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](./README.md)
-[![中文](https://img.shields.io/badge/lang-中文-red.svg)](./README.zh-CN.md)
-[![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://learn.microsoft.com/en-us/powershell/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.0.7-lightgrey.svg)](./VERSION)
+<p align="center">
+  <strong>📖 文档：</strong>
+  <a href="./README.md"><strong>English README</strong></a>
+  &nbsp;|&nbsp;
+  <a href="./README.zh-CN.md"><strong>中文文档</strong></a>
+</p>
+
+<p align="center">
+  <a href="./README.md"><img alt="English" src="https://img.shields.io/badge/lang-English-blue.svg"></a>
+  <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
+  <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.8-lightgrey.svg"></a>
+</p>
 
 CodexToClaude 是一个 Windows 优先的本地代理配置工具。它帮你安装、配置、启动和验证后端代理，并自动把 Claude Code 指向本机接口。
 
@@ -15,25 +24,23 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
                                      \-> oc-go-cc    -> OpenCode Go models
 ```
 
-## 适合谁
+## 🎯 适合谁
 
 - 已有 Codex Plus/Pro，希望在 Claude Code 中调用 Codex 模型。
 - 已有 OpenCode Go API Key，希望通过 Claude Code 使用 OpenCode Go 模型。
 - 不想手动维护代理配置、Claude Code `settings.json`、启动命令和验证流程。
 
-## 功能亮点
+## ✨ 功能亮点
 
-| 能力 | 说明 |
-|------|------|
-| 双后端 | 支持 Codex / OpenCode Go，一键切换模型来源。 |
-| 图形界面 | 双击 `CodexToClaude-GUI.cmd`，按向导完成安装、登录、配置、重启、验证。 |
-| 自动配置 Claude Code | 只合并更新 `~/.claude/settings.json` 的 `env`，保留你的 statusLine、permissions、language 等设置。 |
-| 代理模式 | 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在 HTTP 超时后尝试 SOCKS5。 |
-| 端到端验证 | 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。 |
-| 版本管理 | GUI 和 CLI 都能查看/更新项目与后端二进制。 |
-| 安全默认值 | OAuth JSON、token、API key、日志均被 `.gitignore` 排除，脚本不会打印真实密钥。 |
+- 🚀 **GUI 向导式安装** — 双击 `CodexToClaude-GUI.cmd`，按向导完成安装、登录、配置、重启、验证。
+- 🔀 **双模型来源** — Codex / OpenCode Go 一键切换，不复制业务逻辑。
+- 🧩 **自动配置 Claude Code** — 只合并更新 `~/.claude/settings.json` 的目标 `env`，保留 statusLine、permissions、language 等设置。
+- 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在 HTTP 超时后尝试 SOCKS5。
+- 🧪 **端到端验证** — 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
+- 📦 **版本管理** — GUI 和 CLI 都能查看/更新项目与后端二进制。
+- 🔐 **安全默认值** — OAuth JSON、token、API key、日志均被 `.gitignore` 排除，脚本不会打印真实密钥。
 
-## 界面预览
+## 🖼️ 界面预览
 
 Codex 后端：
 
@@ -43,7 +50,7 @@ OpenCode Go 后端：
 
 ![OpenCode Go 后端界面](docs/assets/gui-opencode-go-zh-CN.png)
 
-## 安装前准备
+## 📋 安装前准备
 
 | 必需项 | 说明 |
 |--------|------|
@@ -63,7 +70,7 @@ OpenCode Go 后端：
 
 无代理用户请明确选择 `Direct`，不要把 `ProxyUrl` 留空当作直连。
 
-## 安装教程：GUI 推荐流程
+## 🚀 安装教程：GUI 推荐流程
 
 ### 1. 下载项目
 
@@ -161,7 +168,7 @@ http://127.0.0.1:3456   # OpenCode Go
 
 此时重启 Claude Code，即可使用 README 中配置的 Opus / Sonnet / Haiku 模型名。
 
-## CLI 安装教程
+## 🖥️ CLI 安装教程
 
 如果你更喜欢命令行，可以跳过 GUI。
 
@@ -202,7 +209,7 @@ $env:OC_GO_CC_API_KEY = "你的 OpenCode Go API Key"
 
 兼容旧写法：`-ProxyUrl none` / `-ProxyUrl direct` 会被归一化为直连。
 
-## 常用命令
+## ⚙️ 常用命令
 
 ```powershell
 # 查看状态
@@ -230,7 +237,7 @@ $env:OC_GO_CC_API_KEY = "你的 OpenCode Go API Key"
 .\scripts\CodexToClaude.ps1 configure-models -OpusModel "gpt-5.5" -SonnetModel "gpt-5.4" -HaikuModel "gpt-5.4"
 ```
 
-## 目录和文件说明
+## 📁 目录和文件说明
 
 CodexToClaude 会创建或修改这些文件：
 
@@ -265,7 +272,7 @@ CodexToClaude/
 └── README.md
 ```
 
-## 故障排查
+## 🧯 故障排查
 
 | 问题 | 处理方式 |
 |------|----------|
@@ -276,7 +283,7 @@ CodexToClaude/
 | Claude Code 仍访问旧模型 | 先点 `配置`，再点 `重启`，然后重启 Claude Code 客户端。 |
 | 端口被占用 | 换一个端口，并重新执行 `配置` + `重启` + `验证`。 |
 
-## 用量状态栏
+## 📊 用量状态栏
 
 Codex 后端会在 CLIProxyAPI 配置中启用 `passthrough-headers: true`，把上游返回的 `X-Codex-Primary-*` 和 `X-Codex-Secondary-*` 限额 headers 透传给 Claude Code 客户端。
 
@@ -288,11 +295,11 @@ Codex 后端会在 CLIProxyAPI 配置中启用 `passthrough-headers: true`，把
 
 推荐配合支持 Codex fallback usage limits 的状态栏插件使用。CodexToClaude 只负责透传 headers，不负责状态栏渲染。
 
-## 关于 thinking 输出
+## 💭 关于 thinking 输出
 
 CodexToClaude 默认会过滤 CLIProxyAPI 请求中的 `reasoning` / `reasoning.effort` 参数，用来规避 Claude Code TUI 在部分 Codex thinking 流中出现中文重复字符的问题。正常回答文本不受影响。
 
-## 安全提醒
+## 🛡️ 安全提醒
 
 不要提交或公开这些内容：
 
@@ -308,7 +315,7 @@ git status
 git diff
 ```
 
-## 开发与测试
+## 🧪 开发与测试
 
 ```powershell
 # 运行自动化测试
@@ -321,13 +328,13 @@ git diff
 
 更详细的维护约定见 [`docs/project-guide.md`](docs/project-guide.md)。
 
-## 参考项目
+## 🔗 参考项目
 
 CodexToClaude 基于以下开源项目构建：
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)：本地 Anthropic-compatible API 与 Codex OAuth 的代理转换。
 - [oc-go-cc](https://github.com/samueltuyizere/oc-go-cc)：OpenCode Go 的 Anthropic / OpenAI 格式转换代理。
 
-## License
+## 📄 License
 
 MIT License
