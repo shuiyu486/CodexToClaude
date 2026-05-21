@@ -67,7 +67,7 @@ $LogPath = Join-Path $InstallDir 'logs\main.log'
 # Default models per provider
 $script:DefaultModels = @{
     cliproxy = @{ Opus = 'gpt-5.5'; Sonnet = 'gpt-5.4'; Haiku = 'gpt-5.4' }
-    occ = @{ Opus = 'claude-opus-4-5'; Sonnet = 'claude-sonnet-4-6'; Haiku = 'claude-haiku-4-5' }
+    occ = @{ Opus = 'deepseek-v4-pro'; Sonnet = 'deepseek-v4-pro'; Haiku = 'deepseek-v4-flash' }
 }
 
 if (-not $PSBoundParameters.ContainsKey('OpusModel')) { $OpusModel = $script:DefaultModels[$Provider].Opus }
@@ -358,14 +358,11 @@ function Configure-Claude([int]$ResolvedPort) {
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' ($OpusModel -replace '\(.*\)$', '')
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
+    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME' ($HaikuModel -replace '\(.*\)$', '')
     if ($Provider -eq 'occ') {
         Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'max'
     } else {
-        if ($Provider -eq 'occ') {
-        Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'max'
-    } else {
         Remove-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL'
-    }
     }
     Remove-JsonProperty $settings.env 'ANTHROPIC_MODEL'
     $outJson = ConvertTo-JsonIndent2 $settings 20

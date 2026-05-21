@@ -248,9 +248,9 @@ function New-DefaultPreferences {
             apiKey = ''
             installDir = @{ cliproxy = $DefaultInstallDir; occ = $DefaultOccInstallDir }
             claudeSettingsPath = $DefaultSettingsPath
-            opusModel = @{ cliproxy = 'gpt-5.5'; occ = 'claude-opus-4-5' }
-            sonnetModel = @{ cliproxy = 'gpt-5.4'; occ = 'claude-sonnet-4-6' }
-            haikuModel = @{ cliproxy = 'gpt-5.4'; occ = 'claude-haiku-4-5' }
+            opusModel = @{ cliproxy = 'gpt-5.5'; occ = 'deepseek-v4-pro' }
+            sonnetModel = @{ cliproxy = 'gpt-5.4'; occ = 'deepseek-v4-pro' }
+            haikuModel = @{ cliproxy = 'gpt-5.4'; occ = 'deepseek-v4-flash' }
             useDeviceLogin = $false
             skipStreamCheck = $false
         }
@@ -312,6 +312,10 @@ function Load-UiPreferences {
         $defaults.lastValues.sonnetModel.occ = Load-PerProviderValue $last 'sonnetModel' 'occ' $defaults.lastValues.sonnetModel.occ
         $defaults.lastValues.haikuModel.cliproxy = Load-PerProviderValue $last 'haikuModel' 'cliproxy' $defaults.lastValues.haikuModel.cliproxy
         $defaults.lastValues.haikuModel.occ = Load-PerProviderValue $last 'haikuModel' 'occ' $defaults.lastValues.haikuModel.occ
+        # Migrate old OCC default model names to new ones
+        if ($defaults.lastValues.opusModel.occ -eq 'claude-opus-4-5') { $defaults.lastValues.opusModel.occ = 'deepseek-v4-pro' }
+        if ($defaults.lastValues.sonnetModel.occ -eq 'claude-sonnet-4-6') { $defaults.lastValues.sonnetModel.occ = 'deepseek-v4-pro' }
+        if ($defaults.lastValues.haikuModel.occ -eq 'claude-haiku-4-5') { $defaults.lastValues.haikuModel.occ = 'deepseek-v4-flash' }
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
         if ($defaults.lastValues.claudeSettingsPath -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.claudeSettingsPath = $DefaultSettingsPath }

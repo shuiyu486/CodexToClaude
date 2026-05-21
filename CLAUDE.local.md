@@ -40,8 +40,9 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 禁止提交或输出 Codex OAuth JSON、`access_token`、`refresh_token`、`id_token`、真实 API key、日志。
 - `payload.filter` 过滤 `reasoning` / `reasoning.effort` 是为避免 Claude Code TUI 中文 thinking 流重复字符，不要随意删除。
 - `Start-Process` 启动 CLIProxyAPI 时必须显式传 `-config`，并设置 `WorkingDirectory` 为 `$InstallDir`。
-- `Start-Process` 启动 oc-go-cc 时必须传 `serve -config <path> --port <port>`，并设置 `WorkingDirectory` 为 `$InstallDir`。
-- OCC config 为 JSON 格式；`api_key` 默认写 `${OC_GO_CC_API_KEY}`，通过环境变量插值避免明文存储。
+- `Start-Process` 启动 oc-go-cc 时必须传 `serve -config <path> --port <port>`，并设置 `WorkingDirectory` 为 `$InstallDir`。启动前必须确保 config 中 `pid_file` 的父目录和 `$env:USERPROFILE\.config\oc-go-cc` 存在，否则 oc-go-cc ≥ v0.1.5 会因写 PID 失败直接退出。
+- OCC config 为 JSON 格式；`respect_requested_model` 默认 `true`（最低要求 oc-go-cc v0.1.5），按请求 model 名直接匹配 `models` key，绕过场景检测；老版本忽略此字段。
+- OCC config 中 `api_key` 默认写 `${OC_GO_CC_API_KEY}`，通过环境变量插值避免明文存储。
 - OCC 不支持 OAuth login；`-Provider occ -Command login` 必须抛出明确错误消息。
 - 版本号在 `VERSION` 文件中维护，格式 `v<major>.<minor>.<patch>.<build>`。每次有意义的提交（功能、修复、重构）应自动递增 build 号。修改与版本相关的代码后，同步更新 README 徽章和文档示例中的版本号。
 - PowerShell 函数不在解析阶段提升；顶层代码必须在函数定义之后才能调用该函数。函数内部可以调用脚本中任何位置定义的其它函数（因为函数体延迟执行）。

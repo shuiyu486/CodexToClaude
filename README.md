@@ -5,7 +5,7 @@
 [![English](https://img.shields.io/badge/lang-中文-red.svg)](./README.md)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://learn.microsoft.com/en-us/powershell/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.0.3-lightgrey.svg)](./VERSION)
+[![Version](https://img.shields.io/badge/version-v1.0.0.4-lightgrey.svg)](./VERSION)
 
 CodexToClaude 通过本地代理把你的 Codex Plus/Pro 或 OpenCode Go 转换成本机 Anthropic-compatible API，让 Claude Code 直接使用。Windows 优先，GUI 一键操作，支持多后端切换。
 

@@ -148,7 +148,10 @@ payload:
     "api_key": "<用户提供或 ${OC_GO_CC_API_KEY}>",
     "pid_file": "<InstallDir>\\oc-go-cc.pid",
     "hot_reload": false,
+    "respect_requested_model": true,
     "models": {
+        "deepseek-v4-pro": { "provider": "opencode-go", "model_id": "deepseek-v4-pro", "temperature": 0.7, "max_tokens": 384000, ... },
+        "deepseek-v4-flash": { "provider": "opencode-go", "model_id": "deepseek-v4-flash", "temperature": 0.5, "max_tokens": 384000, ... },
         "default": { "provider": "opencode-go", "model_id": "deepseek-v4-pro", ... },
         "background": { ... },
         "think": { ... },
@@ -164,7 +167,12 @@ payload:
 ```
 
 - `api_key`：用户通过 GUI 的 ApiKey 字段或 CLI 的 `-ApiKey` 提供时写入真实值；否则写入 `${OC_GO_CC_API_KEY}` 占位符（oc-go-cc 在运行时通过环境变量插值解析）。
-- `models`：6 个场景（default/think/complex/background/long_context/fast）→ OpenCode Go model_id 的映射。所有场景默认使用 `deepseek-v4-pro`，均配置 `reasoning_effort: "max"` 和 `thinking: { type: "enabled" }`。
+- `respect_requested_model`：设为 `true` 时绕过场景检测，直接按请求中的 model 名查找 `models` 条目。需要 oc-go-cc ≥ v0.1.5。老版本忽略此字段。
+- `models`：
+  - 顶层 key 既可以是**模型名**（`deepseek-v4-pro`、`deepseek-v4-flash`，对应 Claude Code 的 Opus/Sonnet/Haiku tier），也可以是**场景名**（`default`/`think`/`complex`/`background`/`long_context`/`fast`）。
+  - 模型名条目：`deepseek-v4-pro`（Opus/Sonnet，temperature=0.7，max_tokens=384K）和 `deepseek-v4-flash`（Haiku，temperature=0.5，max_tokens=384K）。`respect_requested_model` 打开时 oc-go-cc 优先匹配这些 key。
+  - 场景条目：作为 `respect_requested_model` 关闭时的 fallback 路由，均指向 `deepseek-v4-pro`。
+  - 所有条目均配置 `reasoning_effort: "max"` 和 `thinking: { type: "enabled" }`。
 - `fallbacks`：每个场景的故障转移链，同样指向 `deepseek-v4-pro`（利用 oc-go-cc 内置熔断器重试）。
 - `context_threshold`：超过 1M tokens 触发 long_context 场景路由。
 - `opencode_go.base_url`：上游 OpenCode Go API 端点。

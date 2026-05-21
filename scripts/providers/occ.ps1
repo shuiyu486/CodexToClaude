@@ -2,6 +2,28 @@
 # Dot-sourced by CodexToClaude.ps1; accesses script-scope $InstallDir, $ExePath, $ConfigPath, $ApiKey
 # oc-go-cc repo: https://github.com/samueltuyizere/oc-go-cc
 
+$script:OCCMinVersion = [Version]'0.1.5'
+
+function OCC-GetBinaryVersion {
+    if (-not (Test-Path $ExePath)) { return $null }
+    try {
+        $output = & $ExePath --version 2>&1
+        if ($LASTEXITCODE -eq 0 -and $output) {
+            if ($output -match '(\d+\.\d+\.\d+)') {
+                return [Version]$matches[1]
+            }
+        }
+    } catch { }
+    $info = (Get-Item $ExePath).VersionInfo
+    if ($info.ProductVersion -and $info.ProductVersion -match '(\d+\.\d+\.\d+)') {
+        return [Version]$matches[1]
+    }
+    if ($info.FileVersion -and $info.FileVersion -match '(\d+\.\d+\.\d+)') {
+        return [Version]$matches[1]
+    }
+    return $null
+}
+
 function OCC-GetLatestRelease {
     $headers = @{ 'User-Agent' = 'CodexToClaude' }
     if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
@@ -68,7 +90,24 @@ function OCC-WriteConfig([int]$ResolvedPort, [string]$ResolvedProxyUrl) {
         api_key = $key
         pid_file = (Join-Path $InstallDir 'oc-go-cc.pid')
         hot_reload = $false
+        respect_requested_model = $true
         models = [ordered]@{
+            'deepseek-v4-pro' = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-pro'
+                temperature = 0.7
+                max_tokens = 384000
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
+            'deepseek-v4-flash' = [ordered]@{
+                provider = 'opencode-go'
+                model_id = 'deepseek-v4-flash'
+                temperature = 0.5
+                max_tokens = 384000
+                reasoning_effort = 'max'
+                thinking = [ordered]@{ type = 'enabled' }
+            }
             default = [ordered]@{
                 provider = 'opencode-go'
                 model_id = 'deepseek-v4-pro'
@@ -154,6 +193,14 @@ function OCC-WriteConfig([int]$ResolvedPort, [string]$ResolvedProxyUrl) {
     $json = $config | ConvertTo-Json -Depth 10
     Write-FileUtf8NoBom $ConfigPath $json
     Write-OK "Wrote oc-go-cc config: $ConfigPath"
+    $binVer = OCC-GetBinaryVersion
+    if ($null -eq $binVer) {
+        if (Test-Path $ExePath) {
+            Write-Warn "Cannot determine oc-go-cc version. respect_requested_model requires v$($script:OCCMinVersion) or later."
+        }
+    } elseif ($binVer -lt $script:OCCMinVersion) {
+        Write-Warn "oc-go-cc $binVer is too old. respect_requested_model requires v$($script:OCCMinVersion) or later. Run cliproxy-update to update."
+    }
 }
 
 function OCC-GetConfigValue([string]$Name) {
@@ -205,6 +252,17 @@ function OCC-StartProcess([int]$ResolvedPort) {
     Write-Step "Starting oc-go-cc on port $ResolvedPort"
     if (-not (Test-Path $ExePath)) { throw "Missing executable: $ExePath" }
     if (-not (Test-Path $ConfigPath)) { throw "Missing config: $ConfigPath" }
+    $pidDir = $null
+    try {
+        $cfg = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $pidFile = $cfg.pid_file
+        if ($pidFile) {
+            $pidDir = Split-Path -Parent $pidFile
+            if (-not (Test-Path $pidDir)) { New-Item -ItemType Directory -Force $pidDir | Out-Null }
+        }
+    } catch { }
+    $defaultPidDir = Join-Path $env:USERPROFILE '.config\oc-go-cc'
+    if (-not (Test-Path $defaultPidDir)) { New-Item -ItemType Directory -Force $defaultPidDir | Out-Null }
     $existing = Get-PortProcesses $ResolvedPort
     if ($existing.Count -gt 0) {
         Write-OK "Port $ResolvedPort is already listening."
