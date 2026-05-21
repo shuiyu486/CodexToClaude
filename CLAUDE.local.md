@@ -33,8 +33,12 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 
 - 项目版本号单一真源是根目录 `VERSION`，格式如 `v1.0.0.1`；CLI/GUI/文档示例必须保持一致。
 
-- `port` 和 `proxy-url` 必须由用户显式提供；直连也必须显式确认 `none`/`direct`。
-- `ProxyUrl` 只接受 `http://`、`https://`、`socks5://`、`none`、`direct` 等明确值，不把空值猜成直连。
+- `Port` 和代理模式必须由用户显式提供；直连必须显式选择 `ProxyMode Direct` 或提供 `ProxyUrl none/direct`，不要把空值猜成直连。
+- `ProxyMode` 支持 `Auto`、`Http`、`Socks5`、`Direct`；默认 `Auto`。
+- `ProxyUrl` 在 `Auto`/`Http`/`Socks5` 下可以是 `host:port`，也可以是 `http://`、`https://`、`socks5://`；`Direct` 会忽略该字段。
+- `Auto` 先按 HTTP 写入 provider config；`verify` 遇到上游 TLS/timeout 类错误时可切换为同地址 `socks5://...`，重写 config、同步 CLIProxy OAuth JSON 的 `proxy_url`、重启并重试。
+- `Http` / `Socks5` 是显式强制模式，不能被自动切换覆盖。
+- `Direct` 必须省略 CLIProxy `proxy-url` / OCC `proxy_url`；CLIProxy 还必须删除 Codex OAuth JSON 中残留的 `proxy_url`。
 - `configure` 只合并更新 `~/.claude/settings.json` 的目标 `env` 键，保留 `statusLine`、`permissions`、`language` 等其它字段。
 - `auth-status` 扫描 `$InstallDir` 根目录 JSON，且可用 auth 必须满足 `type=codex`、非 `disabled=true`。
 - 禁止提交或输出 Codex OAuth JSON、`access_token`、`refresh_token`、`id_token`、真实 API key、日志。
@@ -56,6 +60,8 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 
 - GUI 语言切换使用 `CodexToClaude.UI.ps1` 内的 `$I18N` 表；新增用户可见文案必须同步 `zh-CN` 和 `en-US`。
 - GUI 偏好文件只保存语言、首次向导完成状态、选中的后端和普通输入值，不保存 token、OAuth JSON 或日志。偏好文件 schema v2，每个后端的端口/安装目录/模型值独立存储。
+- GUI 保存 `proxyMode` 和 `proxyUrl`；当前代理地址是全局共享值，不按 provider 分开保存。
+- GUI 的 `Direct` 模式应禁用或忽略代理地址输入；`Auto`/`Http`/`Socks5` 模式必须要求代理地址非空。
 - 快速开始向导顺序是 `Install -> Login -> Configure -> Restart -> Verify`；OCC 后端隐藏 Login 步骤（改用 API key 环境变量）。
 - GUI 后端切换器（provider toggle buttons `Codex` / `OpenCode Go`）切换时自动保存当前后端输入值、恢复新后端的值、重置向导状态和布局。
 - 高级/诊断命令与主流程分区展示，避免重新变成一排按钮墙。
@@ -65,6 +71,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 ## 验证标准
 
 - 修改脚本后必跑：`.\test\Test-CodexToClaude.ps1`。
+- 修改代理逻辑时，测试必须覆盖：`ProxyMode Auto` 的 `host:port -> http://...` 归一化、`ProxyMode Socks5` 写入 `socks5://...`、`ProxyMode Direct` 省略代理字段并清理 CLIProxy auth `proxy_url`。
 - 涉及真实环境启动逻辑后必跑：`.\scripts\CodexToClaude.ps1 restart` 和 `.\scripts\CodexToClaude.ps1 verify`。
 - GUI 修改至少确认 `scripts/CodexToClaude.UI.ps1` 可解析、`CodexToClaude-GUI.cmd` 存在、中英文切换和快速向导关键路径可用。
 - 提交前检查 `git status` 和 `git diff`，确认没有 OAuth JSON、token、真实 API key 或日志。
@@ -73,6 +80,6 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 
 - `README.md` 面向普通用户和未来开源首页，保持友好、完整但不写维护细节。
 - `docs/project-guide.md` 面向 Claude Code 维护/迭代；改启动、认证、GUI 架构、测试流程时再读取。
-- `docs/claude-code-setup.md` 面向新电脑自动化配置流程。
-- `docs/手动安装与使用.md` 面向不用 CodexToClaude 工具、手动配置 CLIProxyAPI 的用户。
+- `docs/claude-code-setup.md` 面向新电脑自动化配置流程；改 CLI 参数或推荐安装命令时同步更新。
+- `docs/手动安装与使用.md` 面向不用 CodexToClaude 工具、手动配置 CLIProxyAPI 的用户；改 CLIProxy config 字段或代理语义时同步更新。
 - 本文件只放高频背景、架构边界和不可破坏契约，不复制长手动教程。
