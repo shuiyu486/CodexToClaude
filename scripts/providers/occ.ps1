@@ -25,6 +25,11 @@ function OCC-GetBinaryVersion {
 }
 
 function OCC-GetLatestRelease {
+    # Primary: non-API approach (no auth required, works without GH_TOKEN)
+    $result = Get-GitHubReleaseFallback 'samueltuyizere/oc-go-cc' '(windows|win).*\.(zip|exe)$' @('oc-go-cc_windows-amd64.exe', 'oc-go-cc_windows-arm64.exe', 'oc-go-cc.exe', 'oc-go-cc-windows-amd64.exe', 'oc-go-cc-windows-amd64.zip')
+    if ($result) { return $result }
+
+    # Fallback: GitHub API (may need GH_TOKEN to avoid rate limits)
     $headers = @{ 'User-Agent' = 'CodexToClaude' }
     if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
     elseif ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
@@ -34,10 +39,7 @@ function OCC-GetLatestRelease {
         if (-not $asset) { throw 'No Windows asset found in latest oc-go-cc release.' }
         return [pscustomobject]@{ release = $release; asset = $asset }
     } catch {
-        if ($_.Exception.Message -notmatch '403|Forbidden') { throw }
-        $result = Get-GitHubReleaseFallback 'samueltuyizere/oc-go-cc' '(windows|win).*\.(zip|exe)$' @('oc-go-cc_windows-amd64.exe', 'oc-go-cc_windows-arm64.exe', 'oc-go-cc.exe', 'oc-go-cc-windows-amd64.exe', 'oc-go-cc-windows-amd64.zip')
-        if ($result) { return $result }
-        throw
+        throw "GitHub API request failed: $($_.Exception.Message). Set GH_TOKEN env var to avoid rate limits, or download manually."
     }
 }
 
@@ -207,7 +209,9 @@ function OCC-GetConfigValue([string]$Name) {
     if (-not (Test-Path $ConfigPath)) { return $null }
     try {
         $config = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $prop = $config.PSObject.Properties[$Name]
+        $propName = $Name
+        if ($Name -eq 'proxy-url') { $propName = 'proxy_url' }
+        $prop = $config.PSObject.Properties[$propName]
         if ($prop) { return $prop.Value }
     } catch { }
     return $null

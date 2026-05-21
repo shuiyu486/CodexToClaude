@@ -46,14 +46,15 @@ $I18N = @{
         'status.failed.occ' = 'Status: auth check failed'
         'settings.title' = 'Connection settings'
         'field.port' = 'Port'
+        'field.proxyMode' = 'Proxy mode'
         'field.proxy' = 'ProxyUrl'
         'field.apiKey' = 'ApiKey'
         'field.installDir' = 'InstallDir'
         'field.settings' = 'Claude settings'
         'hint.port.cliproxy' = 'Local CLIProxyAPI listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 8317.'
         'hint.port.occ' = 'Local oc-go-cc listen port. Claude Code uses http://127.0.0.1:<Port>. Example: 3456.'
-        'hint.proxy.cliproxy' = 'Upstream proxy for Codex/OpenAI. Use http://127.0.0.1:7897, or type none for direct access.'
-        'hint.proxy.occ' = 'Upstream proxy for OpenCode API. Use http://127.0.0.1:7897, or type none for direct access.'
+        'hint.proxy.cliproxy' = 'Auto can switch HTTP to SOCKS5 on timeout. Use 127.0.0.1:7897, http://..., or socks5://.... Direct ignores this field.'
+        'hint.proxy.occ' = 'Auto can switch HTTP to SOCKS5 on timeout. Use 127.0.0.1:7897, http://..., or socks5://.... Direct ignores this field.'
         'check.device' = 'Use device login'
         'check.skipStream' = 'Skip Claude stream check'
         'wizard.title' = 'Quick start wizard'
@@ -138,14 +139,15 @@ $I18N = @{
         'status.failed.occ' = '状态：认证检查失败'
         'settings.title' = '连接设置'
         'field.port' = '端口'
+        'field.proxyMode' = '代理模式'
         'field.proxy' = '代理地址'
         'field.apiKey' = 'API Key'
         'field.installDir' = '安装目录'
         'field.settings' = 'Claude 配置'
         'hint.port.cliproxy' = 'CLIProxyAPI 本机监听端口。Claude Code 会访问 http://127.0.0.1:<Port>。示例：8317。'
         'hint.port.occ' = 'oc-go-cc 本机监听端口。Claude Code 会访问 http://127.0.0.1:<Port>。示例：3456。'
-        'hint.proxy.cliproxy' = 'CLIProxyAPI 访问 Codex/OpenAI 上游使用的代理。示例：http://127.0.0.1:7897；直连填 none。'
-        'hint.proxy.occ' = 'oc-go-cc 访问 OpenCode API 上游使用的代理。示例：http://127.0.0.1:7897；直连填 none。'
+        'hint.proxy.cliproxy' = 'Auto 超时时可从 HTTP 切到 SOCKS5。可填 127.0.0.1:7897、http://... 或 socks5://...；Direct 会忽略此项。'
+        'hint.proxy.occ' = 'Auto 超时时可从 HTTP 切到 SOCKS5。可填 127.0.0.1:7897、http://... 或 socks5://...；Direct 会忽略此项。'
         'check.device' = '使用设备码登录'
         'check.skipStream' = '跳过 Claude stream 检查'
         'wizard.title' = '快速开始向导'
@@ -244,8 +246,9 @@ function New-DefaultPreferences {
         selectedProvider = 'cliproxy'
         lastValues = @{
             port = @{ cliproxy = '8317'; occ = '3456' }
-            proxyUrl = 'http://127.0.0.1:7897'
-            apiKey = ''
+            proxyMode = 'Auto'
+            proxyUrl = '127.0.0.1:7897'
+            apiKey = 'sk-cliproxy-local-dev-2026'
             installDir = @{ cliproxy = $DefaultInstallDir; occ = $DefaultOccInstallDir }
             claudeSettingsPath = $DefaultSettingsPath
             opusModel = @{ cliproxy = 'gpt-5.5'; occ = 'deepseek-v4-pro' }
@@ -302,6 +305,8 @@ function Load-UiPreferences {
 
         $defaults.lastValues.port.cliproxy = Load-PerProviderValue $last 'port' 'cliproxy' $defaults.lastValues.port.cliproxy
         $defaults.lastValues.port.occ = Load-PerProviderValue $last 'port' 'occ' $defaults.lastValues.port.occ
+        $defaults.lastValues.proxyMode = [string](Get-ObjectProperty $last 'proxyMode' $defaults.lastValues.proxyMode)
+        if ($defaults.lastValues.proxyMode -notin @('Auto', 'Http', 'Socks5', 'Direct')) { $defaults.lastValues.proxyMode = 'Auto' }
         $defaults.lastValues.proxyUrl = [string](Get-ObjectProperty $last 'proxyUrl' $defaults.lastValues.proxyUrl)
         $defaults.lastValues.installDir.cliproxy = Clean-InstallDir (Load-PerProviderValue $last 'installDir' 'cliproxy' $defaults.lastValues.installDir.cliproxy) $defaults.lastValues.installDir.cliproxy
         $defaults.lastValues.installDir.occ = Clean-InstallDir (Load-PerProviderValue $last 'installDir' 'occ' $defaults.lastValues.installDir.occ) $defaults.lastValues.installDir.occ
@@ -318,6 +323,8 @@ function Load-UiPreferences {
         if ($defaults.lastValues.haikuModel.occ -eq 'claude-haiku-4-5') { $defaults.lastValues.haikuModel.occ = 'deepseek-v4-flash' }
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
+        $defaults.lastValues.apiKey = [string](Get-ObjectProperty $last 'apiKey' $defaults.lastValues.apiKey)
+        if ($defaults.lastValues.apiKey -eq '') { $defaults.lastValues.apiKey = 'sk-cliproxy-local-dev-2026' }
         if ($defaults.lastValues.claudeSettingsPath -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.claudeSettingsPath = $DefaultSettingsPath }
         return $defaults
     } catch {
@@ -332,6 +339,7 @@ function Save-UiPreferences {
     $script:Prefs.firstRunCompleted = $script:WizardCompleted
     $script:Prefs.selectedProvider = $script:CurrentProvider
     $script:Prefs.lastValues.port[$script:CurrentProvider] = $portBox.Text.Trim()
+    $script:Prefs.lastValues.proxyMode = [string]$proxyModeBox.SelectedItem
     $script:Prefs.lastValues.proxyUrl = $proxyBox.Text.Trim()
     $script:Prefs.lastValues.apiKey = $apiKeyBox.Text.Trim()
     $script:Prefs.lastValues.installDir[$script:CurrentProvider] = $installDirBox.Text.Trim()
@@ -445,6 +453,11 @@ function Show-Message([string]$MessageKey, [string]$TitleKey) {
     [System.Windows.Forms.MessageBox]::Show((T $MessageKey), (T $TitleKey)) | Out-Null
 }
 
+function Update-ProxyModeState {
+    $direct = ([string]$proxyModeBox.SelectedItem) -eq 'Direct'
+    [void]($proxyBox.Enabled = -not $direct)
+}
+
 function Validate-Inputs([bool]$RequireProxy) {
     $portText = $portBox.Text.Trim()
     if ($portText -ne '' -and $portText -notmatch '^\d+$') {
@@ -459,12 +472,13 @@ function Validate-Inputs([bool]$RequireProxy) {
         }
     }
     if ($RequireProxy) {
+        $mode = [string]$proxyModeBox.SelectedItem
         $proxy = $proxyBox.Text.Trim()
-        if ($proxy -eq '') {
+        if ($mode -ne 'Direct' -and $proxy -eq '') {
             Show-Message 'dialog.proxyRequired' 'dialog.proxyRequiredTitle'
             return $false
         }
-        if ($proxy -notin @('none', 'direct') -and $proxy -notmatch '^(http|https|socks5)://') {
+        if ($mode -ne 'Direct' -and $proxy -match '^[a-zA-Z][a-zA-Z0-9+.-]*://' -and $proxy -notmatch '^(http|https|socks5)://') {
             Show-Message 'dialog.invalidProxy' 'dialog.invalidProxyTitle'
             return $false
         }
@@ -475,8 +489,10 @@ function Validate-Inputs([bool]$RequireProxy) {
 function Build-Args([string]$Command, [bool]$NeedPortProxy) {
     $cliArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, $Command)
     $cliArgs += @('-Provider', $script:CurrentProvider)
+    $mode = [string]$proxyModeBox.SelectedItem
     if ($NeedPortProxy -or $portBox.Text.Trim() -ne '') { $cliArgs += @('-Port', $portBox.Text.Trim()) }
-    if ($NeedPortProxy -or $proxyBox.Text.Trim() -ne '') { $cliArgs += @('-ProxyUrl', $proxyBox.Text.Trim()) }
+    if ($NeedPortProxy -or $mode -ne 'Auto') { $cliArgs += @('-ProxyMode', $mode) }
+    if ($mode -ne 'Direct' -and ($NeedPortProxy -or $proxyBox.Text.Trim() -ne '')) { $cliArgs += @('-ProxyUrl', $proxyBox.Text.Trim()) }
     if ($apiKeyBox.Text.Trim() -ne '') { $cliArgs += @('-ApiKey', $apiKeyBox.Text.Trim()) }
     if ($installDirBox.Text.Trim() -ne '') { $cliArgs += @('-InstallDir', $installDirBox.Text.Trim()) }
     if ($settingsPathBox.Text.Trim() -ne '') { $cliArgs += @('-ClaudeSettingsPath', $settingsPathBox.Text.Trim()) }
@@ -796,14 +812,26 @@ $portHint.ForeColor = [System.Drawing.Color]::DimGray
 Register-DynamicText $portHint 'hint.port'
 $settingsGroup.Controls.Add($portHint)
 
-$settingsGroup.Controls.Add((New-Label (T 'field.proxy') 14 64 120 22))
+$settingsGroup.Controls.Add((New-Label (T 'field.proxyMode') 14 64 120 22))
+Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.proxyMode'
+$proxyModeBox = New-Object System.Windows.Forms.ComboBox
+$proxyModeBox.DropDownStyle = 'DropDownList'
+$proxyModeBox.Location = New-Object System.Drawing.Point(140, 60)
+$proxyModeBox.Size = New-Object System.Drawing.Size(90, 24)
+[void]$proxyModeBox.Items.AddRange(@('Auto', 'Http', 'Socks5', 'Direct'))
+[void]($proxyModeBox.SelectedItem = $script:Prefs.lastValues.proxyMode)
+$settingsGroup.Controls.Add($proxyModeBox)
+
+$settingsGroup.Controls.Add((New-Label (T 'field.proxy') 240 64 70 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.proxy'
-$proxyBox = New-TextBox $script:Prefs.lastValues.proxyUrl 140 60 260
+$proxyBox = New-TextBox $script:Prefs.lastValues.proxyUrl 315 60 170
 $settingsGroup.Controls.Add($proxyBox)
-$proxyHint = New-Label (T 'hint.proxy.cliproxy') 415 60 490 36
+$proxyHint = New-Label (T 'hint.proxy.cliproxy') 500 60 405 36
 $proxyHint.ForeColor = [System.Drawing.Color]::DimGray
 Register-DynamicText $proxyHint 'hint.proxy'
 $settingsGroup.Controls.Add($proxyHint)
+Update-ProxyModeState
+$proxyModeBox.Add_SelectedIndexChanged({ Update-ProxyModeState })
 
 $settingsGroup.Controls.Add((New-Label (T 'field.apiKey') 14 98 120 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.apiKey'

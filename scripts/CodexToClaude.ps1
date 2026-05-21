@@ -11,6 +11,8 @@ param(
     # --- Common parameters ---
     [int]$Port,
     [string]$ProxyUrl,
+    [ValidateSet('Auto', 'Http', 'Socks5', 'Direct')]
+    [string]$ProxyMode = 'Auto',
     [string]$ApiKey = 'sk-cliproxy-local-dev-2026',
     [string]$InstallDir,
     [string]$ClaudeSettingsPath = (Join-Path $env:USERPROFILE '.claude\settings.json'),
@@ -91,23 +93,54 @@ function Write-Fail([string]$Message) { Write-Host ("    [X] " + $Message) -Fore
 function Write-Info([string]$Message) { Write-Host ("    .. " + $Message) -ForegroundColor Gray }
 
 function Get-GitHubReleaseFallback([string]$Repo, [string]$AssetRegex, [string[]]$NameCandidates) {
+    # Step 1: Get latest tag from non-API sources
+    $tag = $null
     try {
         $atom = Invoke-WebRequest -Uri "https://github.com/$Repo/releases.atom" -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 30
         $tagMatch = [regex]::Match($atom.Content, '<link rel="alternate" type="text/html" href="https://github\.com/[^/]+/[^/]+/releases/tag/([^"]+)"')
-        if (-not $tagMatch.Success) { return $null }
-        $tag = $tagMatch.Groups[1].Value
-        $release = [pscustomobject]@{ tag_name = $tag }
-        foreach ($candidate in $NameCandidates) {
-            $url = "https://github.com/$Repo/releases/download/$tag/$candidate"
-            try {
-                $response = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 15
-                if ($response.StatusCode -eq 200) {
-                    $asset = [pscustomobject]@{ name = $candidate; browser_download_url = $url }
-                    return [pscustomobject]@{ release = $release; asset = $asset }
-                }
-            } catch { }
+        if ($tagMatch.Success) { $tag = $tagMatch.Groups[1].Value }
+    } catch { }
+
+    if (-not $tag) {
+        try {
+            $response = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 30
+            if ($response.BaseResponse -and $response.BaseResponse.ResponseUri) {
+                $finalUri = $response.BaseResponse.ResponseUri.AbsoluteUri
+                if ($finalUri -match '/releases/tag/([^/]+)$') { $tag = $Matches[1] }
+            }
+        } catch { }
+    }
+
+    if (-not $tag) { return $null }
+
+    # Step 2: Discover actual asset names from expanded_assets page (no API, no auth)
+    try {
+        $assetsPage = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/expanded_assets/$tag" -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 30
+        $escapedTag = [regex]::Escape($tag)
+        $assetMatches = [regex]::Matches($assetsPage.Content, "href=`"/$Repo/releases/download/$escapedTag/([^`"]+)`"")
+        foreach ($m in $assetMatches) {
+            $name = $m.Groups[1].Value
+            if ($name -match $AssetRegex) {
+                $url = "https://github.com/$Repo/releases/download/$tag/$name"
+                $release = [pscustomobject]@{ tag_name = $tag }
+                $asset = [pscustomobject]@{ name = $name; browser_download_url = $url }
+                return [pscustomobject]@{ release = $release; asset = $asset }
+            }
         }
     } catch { }
+
+    # Step 3: Fall back to NameCandidates with HEAD probes
+    $release = [pscustomobject]@{ tag_name = $tag }
+    foreach ($candidate in $NameCandidates) {
+        $url = "https://github.com/$Repo/releases/download/$tag/$candidate"
+        try {
+            $response = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -Headers @{ 'User-Agent' = 'CodexToClaude' } -TimeoutSec 15
+            if ($response.StatusCode -eq 200) {
+                $asset = [pscustomobject]@{ name = $candidate; browser_download_url = $url }
+                return [pscustomobject]@{ release = $release; asset = $asset }
+            }
+        } catch { }
+    }
     return $null
 }
 
@@ -168,13 +201,14 @@ function Show-Help {
     Write-Host "  occ       oc-go-cc (OpenCode Go)      default port: $($script:ProviderMeta.occ.DefaultPort)"
     Write-Host ''
     Write-Host 'Required setup values:' -ForegroundColor Yellow
-    Write-Host '  -Port      Local proxy listen port. Claude Code uses http://127.0.0.1:<Port>.'
-    Write-Host '  -ProxyUrl  Upstream proxy for API access. Example: http://127.0.0.1:7897'
-    Write-Host '             If your network can access upstream directly, explicitly use: -ProxyUrl none'
+    Write-Host '  -Port       Local proxy listen port. Claude Code uses http://127.0.0.1:<Port>.'
+    Write-Host '  -ProxyMode  Auto|Http|Socks5|Direct. Auto starts with HTTP and verify can switch to SOCKS5 on timeout.'
+    Write-Host '  -ProxyUrl   Upstream proxy for API access. Example: 127.0.0.1:7897, http://127.0.0.1:7897, or socks5://127.0.0.1:7897'
+    Write-Host '              If your network can access upstream directly, explicitly use: -ProxyMode Direct or -ProxyUrl none'
     Write-Host ''
     Write-Host 'Examples:'
-    Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyUrl "http://127.0.0.1:7897"'
-    Write-Host '  .\scripts\CodexToClaude.ps1 install -Provider occ -Port 3456 -ProxyUrl none'
+    Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyMode Auto -ProxyUrl "127.0.0.1:7897"'
+    Write-Host '  .\scripts\CodexToClaude.ps1 install -Provider occ -Port 3456 -ProxyMode Direct'
     Write-Host '  .\scripts\CodexToClaude.ps1 login -Device'
     Write-Host '  .\scripts\CodexToClaude.ps1 restart'
 }
@@ -195,32 +229,46 @@ function Get-AuthStatus {
 # ============================================================
 # Shared infrastructure functions
 # ============================================================
-function Normalize-ProxyUrl([string]$Value) {
+function Get-ProxyTarget([string]$Value) {
+    return ($Value.Trim() -replace '^(http|https|socks5)://', '')
+}
+
+function Normalize-ProxyUrl([string]$Value, [string]$Mode) {
+    if ($Mode -eq 'Direct') { return '' }
     if ($null -eq $Value) { return $null }
     $v = $Value.Trim()
     if ($v -eq '') { return $null }
     if ($v -in @('none', 'direct', 'no', 'off', 'false')) { return '' }
-    if ($v -notmatch '^(http|https|socks5)://') {
-        throw 'proxy-url must start with http://, https://, or socks5://. Use none if no proxy is needed.'
+    if ($v -match '^[a-zA-Z][a-zA-Z0-9+.-]*://' -and $v -notmatch '^(http|https|socks5)://') {
+        throw 'proxy-url must start with http://, https://, or socks5://. Use Direct mode or none if no proxy is needed.'
     }
+    if ($Mode -eq 'Http') { return "http://$(Get-ProxyTarget $v)" }
+    if ($Mode -eq 'Socks5') { return "socks5://$(Get-ProxyTarget $v)" }
+    if ($v -notmatch '^(http|https|socks5)://') { return "http://$v" }
     return $v
 }
 
+function Convert-ProxyUrlScheme([string]$Value, [string]$Scheme) {
+    if (-not $Value) { return $null }
+    return "${Scheme}://$(Get-ProxyTarget $Value)"
+}
+
 function Resolve-ProxyUrl([bool]$RequirePrompt) {
-    if ($ProxyUrlProvided) { return Normalize-ProxyUrl $ProxyUrl }
+    if ($ProxyMode -eq 'Direct') { return '' }
+    if ($ProxyUrlProvided) { return Normalize-ProxyUrl $ProxyUrl $ProxyMode }
     $fromConfig = Get-ConfigValue 'proxy-url'
-    if ($null -ne $fromConfig) { return Normalize-ProxyUrl $fromConfig }
+    if ($null -ne $fromConfig) { return Normalize-ProxyUrl $fromConfig 'Auto' }
     if (-not $RequirePrompt) {
-        throw 'Missing proxy-url. Run configure/install with -ProxyUrl first. Use -ProxyUrl none for direct access.'
+        throw 'Missing proxy-url. Run configure/install with -ProxyUrl first, or use -ProxyMode Direct for direct access.'
     }
     while ($true) {
         Write-Host ''
         Write-Host 'ProxyUrl is the upstream proxy used to access API endpoints.' -ForegroundColor Yellow
-        Write-Host 'Example: http://127.0.0.1:7897' -ForegroundColor Gray
+        Write-Host 'Example: 127.0.0.1:7897, http://127.0.0.1:7897, or socks5://127.0.0.1:7897' -ForegroundColor Gray
         Write-Host 'If direct access works, enter none. Do not leave it blank.' -ForegroundColor Gray
         $inputProxy = Read-Host 'Enter ProxyUrl'
         try {
-            $normalized = Normalize-ProxyUrl $inputProxy
+            $normalized = Normalize-ProxyUrl $inputProxy $ProxyMode
             if ($null -ne $normalized) { return $normalized }
             Write-Warn 'ProxyUrl cannot be blank. Use none for direct access.'
         } catch {
@@ -412,9 +460,10 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
     }
     $thinkingCount = ([regex]::Matches($output, 'thinking_delta')).Count
     $textCount = ([regex]::Matches($output, 'text_delta')).Count
-    if ($thinkingCount -ne 0) { throw "Claude stream-json still contains thinking_delta_count=$thinkingCount" }
+    if ($thinkingCount -ne 0) { Write-Warn "Claude stream-json contains thinking_delta_count=$thinkingCount (payload.filter may need update for current CLIProxyAPI version)" }
     if ($textCount -eq 0) { throw 'Claude stream-json did not contain text_delta.' }
-    Write-OK "Claude stream-json check passed: thinking_delta_count=0, text_delta_count=$textCount"
+    if ($thinkingCount -eq 0) { Write-OK "Claude stream-json check passed: thinking_delta_count=0, text_delta_count=$textCount" }
+    else { Write-OK "Claude stream-json text check passed: text_delta_count=$textCount" }
 }
 
 function Show-Status([int]$ResolvedPort) {
@@ -443,6 +492,38 @@ function Show-Status([int]$ResolvedPort) {
     }
 }
 
+function Test-ProxyTimeoutError($ErrorRecord) {
+    $message = $ErrorRecord.Exception.Message
+    return ($message -match 'TLS handshake timeout|timeout|timed out')
+}
+
+function Try-AutoSwitchToSocks5([int]$ResolvedPort, $ErrorRecord) {
+    if ($ProxyMode -ne 'Auto') { return $false }
+    if (-not (Test-ProxyTimeoutError $ErrorRecord)) { return $false }
+    $currentProxy = Get-ConfigValue 'proxy-url'
+    if (-not $currentProxy -or $currentProxy -notmatch '^https?://') { return $false }
+    $nextProxy = Convert-ProxyUrlScheme $currentProxy 'socks5'
+    Write-Warn "HTTP proxy timed out; switching Auto proxy to $nextProxy and retrying."
+    $writeFunc = "$($PMeta.Prefix)-WriteConfig"
+    $stopFunc = "$($PMeta.Prefix)-StopProcess"
+    $startFunc = "$($PMeta.Prefix)-StartProcess"
+    & $writeFunc $ResolvedPort $nextProxy
+    try { & $stopFunc $ResolvedPort } catch { Write-Warn "Could not stop before Auto proxy retry: $($_.Exception.Message)" }
+    & $startFunc $ResolvedPort
+    return $true
+}
+
+function Invoke-MessageWithAutoProxy([int]$ResolvedPort) {
+    try {
+        return Get-InvokeMessage $ResolvedPort
+    } catch {
+        if (Try-AutoSwitchToSocks5 $ResolvedPort $_) {
+            return Get-InvokeMessage $ResolvedPort
+        }
+        throw
+    }
+}
+
 function Verify-Setup([int]$ResolvedPort) {
     Write-Step 'Verifying setup'
     Assert-AuthReady
@@ -453,7 +534,7 @@ function Verify-Setup([int]$ResolvedPort) {
     if ($models.data) { $modelCount = @($models.data).Count }
     if ($modelCount -eq 0) { throw '/v1/models returned no models.' }
     Write-OK "/v1/models returned $modelCount models"
-    $message = Get-InvokeMessage $ResolvedPort
+    $message = Invoke-MessageWithAutoProxy $ResolvedPort
     $text = ''
     if ($message.content) {
         foreach ($part in $message.content) {

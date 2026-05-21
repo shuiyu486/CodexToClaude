@@ -89,6 +89,52 @@ TestCase 'ProxyUrl writes explicit proxy-url line' {
     }
 }
 
+TestCase 'ProxyMode Auto accepts host port and writes HTTP proxy-url' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-auto"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18320 -ProxyMode Auto -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch 'proxy-url: "http://127\.0\.0\.1:7897"') { throw 'Auto mode should default host:port to HTTP proxy-url.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'ProxyMode Socks5 writes socks5 proxy-url' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-socks"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18321 -ProxyMode Socks5 -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch 'proxy-url: "socks5://127\.0\.0\.1:7897"') { throw 'Socks5 mode should write socks5 proxy-url.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'ProxyMode Direct removes CLIProxy auth proxy_url' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-direct"
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    New-Item -ItemType Directory $installDir -Force | Out-Null
+    try {
+        $auth = @{ type = 'codex'; email = 'user@example.com'; disabled = $false; proxy_url = 'http://127.0.0.1:7897' } | ConvertTo-Json -Depth 5
+        [System.IO.File]::WriteAllText((Join-Path $installDir 'codex-user.json'), $auth, [System.Text.Encoding]::UTF8)
+        & $Script configure -Port 18322 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -match '(?m)^proxy-url:') { throw 'Direct mode should omit proxy-url.' }
+        $updated = Get-Content (Join-Path $installDir 'codex-user.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($updated.PSObject.Properties['proxy_url']) { throw 'Direct mode should remove auth proxy_url.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 TestCase 'Configure models writes Claude model env values' {
     $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-models"
     New-Item -ItemType Directory $fakeHome -Force | Out-Null
@@ -226,3 +272,4 @@ TestCase 'CLIProxy provider syntax parses' {
 
 Write-Host "`nPassed: $Passed  Failed: $Failed" -ForegroundColor Cyan
 if ($Failed -gt 0) { exit 1 }
+exit 0

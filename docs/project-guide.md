@@ -63,8 +63,9 @@ CodexToClaude/
 
 - GUI 只收集参数、展示状态、编排步骤和调用 `CodexToClaude.ps1`。
 - 不重复实现安装、登录、配置、启停、认证解析等业务逻辑。
-- `Install` / `Configure` 必须要求 `Port` 和 `ProxyUrl`。
-- `ProxyUrl` 直连必须显式输入 `none` 或 `direct`。
+- `Install` / `Configure` 必须要求 `Port` 和代理选择；`Direct` 模式可以不要求 `ProxyUrl`。
+- GUI 代理模式为 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 是默认值。
+- `ProxyUrl` 直连必须显式输入 `none/direct` 或选择 `Direct`。
 - GUI 启动和登录后都要刷新 `Login status`。
 - 登录状态以 `auth-status -Json` 为唯一真源。
 
@@ -75,6 +76,7 @@ GUI 使用单文件数据驱动结构，仍不引入 Node/.NET 打包链路。
 - 中英文文案集中在 `CodexToClaude.UI.ps1` 的 `$I18N` 表；新增用户可见文案必须同步 `zh-CN` 和 `en-US`。
 - 界面文本通过稳定 key 绑定控件；不要把新文案散落在事件处理器里。
 - 语言、首次向导完成状态和最近输入保存到 `~/.codextoclaude/ui-preferences.json`。
+- 偏好文件保存 `proxyMode` 与 `proxyUrl`；代理地址当前为全局共享值，不按 provider 分开保存。
 - 偏好文件只保存 UI 状态和普通输入，不保存 OAuth JSON、token、日志内容。
 - 快速开始向导只映射 `Install -> Login -> Configure -> Restart -> Verify`，每步仍调用 CLI 子命令。
 - 高级/诊断操作与首次向导分区展示，避免再次退化为按钮墙。
@@ -114,7 +116,7 @@ CodexToClaude 基于 CLIProxyAPI 和 oc-go-cc 构建：
 ```yaml
 host: "127.0.0.1"
 port: <用户提供>
-proxy-url: "<用户提供；直连时省略>"
+proxy-url: "<按 ProxyMode 规范化后的代理；直连时省略>"
 auth-dir: "$InstallDir"
 ```
 
@@ -161,7 +163,7 @@ payload:
     },
     "fallbacks": { ... },
     "opencode_go": { "base_url": "...", "timeout_ms": 300000 },
-    "proxy_url": "<用户提供；直连时省略>",
+    "proxy_url": "<按 ProxyMode 规范化后的代理；直连时省略>",
     "logging": { "level": "info", "requests": true }
 }
 ```
@@ -225,9 +227,11 @@ payload:
 ## Port 和 ProxyUrl 规则
 
 - `Port` 必须是 1-65535。
-- `ProxyUrl` 必须以 `http://`、`https://`、`socks5://` 开头，或为 `none/direct`。
-- 安装和配置时不能猜代理；必须由用户显式提供。
-- 若用户直连，也必须显式提供 `none`。
+- `ProxyMode` 为 `Auto`、`Http`、`Socks5`、`Direct`；默认 `Auto`。
+- `ProxyUrl` 可以是 `host:port`，也可以以 `http://`、`https://`、`socks5://` 开头，或为 `none/direct`。
+- 安装和配置时不能猜是否需要代理；必须由用户显式提供代理模式。
+- `Auto` 先按 HTTP 写入，`verify` 遇到上游超时时可切换为同地址 SOCKS5 并持久化到 provider config；CLIProxy 同步更新 OAuth JSON 的 `proxy_url`。
+- 若用户直连，也必须显式选择 `Direct` 或提供 `none`。
 
 ## 测试和验收
 

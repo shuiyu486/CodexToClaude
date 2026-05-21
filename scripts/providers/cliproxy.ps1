@@ -30,6 +30,11 @@ function CLIProxy-MoveLegacyInstall {
 }
 
 function CLIProxy-GetLatestRelease {
+    # Primary: non-API approach (no auth required, works without GH_TOKEN)
+    $result = Get-GitHubReleaseFallback 'router-for-me/CLIProxyAPI' '(windows|win).*(amd64|x64|x86_64).*\.(zip|exe)$' @('cli-proxy-api.exe', 'cli-proxy-api-windows-amd64.exe', 'CLIProxyAPI-windows-amd64.exe', 'cli-proxy-api-windows-amd64.zip', 'CLIProxyAPI-windows-amd64.zip', 'CLIProxyAPI_windows_amd64.zip')
+    if ($result) { return $result }
+
+    # Fallback: GitHub API (may need GH_TOKEN to avoid rate limits)
     $headers = @{ 'User-Agent' = 'CodexToClaude' }
     if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
     elseif ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
@@ -39,10 +44,7 @@ function CLIProxy-GetLatestRelease {
         if (-not $asset) { throw 'No Windows x64/amd64 asset found in latest release.' }
         return [pscustomobject]@{ release = $release; asset = $asset }
     } catch {
-        if ($_.Exception.Message -notmatch '403|Forbidden') { throw }
-        $result = Get-GitHubReleaseFallback 'router-for-me/CLIProxyAPI' '(windows|win).*(amd64|x64|x86_64).*\.(zip|exe)$' @('cli-proxy-api.exe', 'cli-proxy-api-windows-amd64.exe', 'CLIProxyAPI-windows-amd64.exe', 'cli-proxy-api-windows-amd64.zip', 'CLIProxyAPI-windows-amd64.zip')
-        if ($result) { return $result }
-        throw
+        throw "GitHub API request failed: $($_.Exception.Message). Set GH_TOKEN env var to avoid rate limits, or download manually."
     }
 }
 
@@ -87,6 +89,25 @@ function CLIProxy-InstallBinary {
     }
 }
 
+function CLIProxy-SyncAuthProxyUrl([string]$ResolvedProxyUrl) {
+    Ensure-InstallDir
+    $updated = 0
+    foreach ($file in (Get-ChildItem $InstallDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        try {
+            $auth = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($auth.type -ne 'codex' -or $auth.disabled -eq $true) { continue }
+            if ($ResolvedProxyUrl) {
+                Set-JsonProperty $auth 'proxy_url' $ResolvedProxyUrl
+            } else {
+                Remove-JsonProperty $auth 'proxy_url'
+            }
+            Write-FileUtf8NoBom $file.FullName (ConvertTo-JsonIndent2 $auth 20)
+            $updated++
+        } catch { }
+    }
+    if ($updated -gt 0) { Write-OK "Synced Codex OAuth proxy_url on $updated auth file(s)." }
+}
+
 function CLIProxy-WriteConfig([int]$ResolvedPort, [string]$ResolvedProxyUrl) {
     $proxyLine = ''
     if ($ResolvedProxyUrl -ne '') { $proxyLine = "proxy-url: `"$ResolvedProxyUrl`"`n" }
@@ -110,6 +131,10 @@ quota-exceeded:
   switch-preview-model: true
 
 request-retry: 3
+max-retry-interval: 30
+streaming:
+  bootstrap-retries: 5
+  keepalive-seconds: 15
 debug: true
 logging-to-file: true
 logs-max-total-size-mb: 10
@@ -124,6 +149,7 @@ payload:
         - "reasoning.effort"
 "@
     Write-FileUtf8NoBom $ConfigPath $content
+    CLIProxy-SyncAuthProxyUrl $ResolvedProxyUrl
     Write-OK "Wrote config: $ConfigPath"
 }
 
@@ -208,6 +234,16 @@ function CLIProxy-GetAuthStatus {
     }
 }
 
+function Read-ConfigProxyUrl {
+    if (-not (Test-Path $ConfigPath)) { return $null }
+    try {
+        $yaml = Get-Content $ConfigPath -Raw -Encoding UTF8
+        if ($yaml -match 'proxy-url:\s*"([^"]+)"') { return $matches[1] }
+        if ($yaml -match "proxy-url:\s*'([^']+)'") { return $matches[1] }
+    } catch { }
+    return $null
+}
+
 function CLIProxy-StartProcess([int]$ResolvedPort) {
     Write-Step "Starting CLIProxyAPI on port $ResolvedPort"
     if (-not (Test-Path $ExePath)) { throw "Missing executable: $ExePath" }
@@ -218,7 +254,16 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
         return
     }
     $stderr = Join-Path $env:TEMP "cliproxystart-$([guid]::NewGuid().ToString()).err"
+    $prevHttpsProxy = [Environment]::GetEnvironmentVariable('HTTPS_PROXY')
+    $prevHttpProxy = [Environment]::GetEnvironmentVariable('HTTP_PROXY')
     try {
+        # Read proxy-url from config and inject as env vars so Go net/http can use it
+        $cfgProxy = Read-ConfigProxyUrl
+        if ($cfgProxy) {
+            $env:HTTPS_PROXY = $cfgProxy
+            $env:HTTP_PROXY = $cfgProxy
+            Write-Info "Proxy injected: $cfgProxy"
+        }
         $proc = Start-Process -FilePath $ExePath -ArgumentList @('-config', $ConfigPath) -WorkingDirectory $InstallDir -WindowStyle Minimized -PassThru -RedirectStandardError $stderr
         Start-Sleep -Milliseconds 500
         if ($proc.HasExited) {
@@ -236,6 +281,8 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
         Write-OK "Started cli-proxy-api pid=$($proc.Id)"
     } finally {
         Remove-Item $stderr -Force -ErrorAction SilentlyContinue
+        $env:HTTPS_PROXY = $prevHttpsProxy
+        $env:HTTP_PROXY = $prevHttpProxy
     }
 }
 

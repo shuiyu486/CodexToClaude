@@ -7,19 +7,21 @@
 ## 关键原则
 
 - 不要要求用户手工改文件，除 OAuth 浏览器/设备码登录外尽量自动化。
-- `Port` 和 `ProxyUrl` 必须由用户显式提供或确认直连。
+- `Port`、`ProxyMode` 和 `ProxyUrl` 必须由用户显式提供；直连必须显式选择 `Direct` 或确认 `none/direct`。
 - 不要把 `access_token`、`refresh_token`、`id_token`、真实 API key 写入仓库或回答中。
 - Claude Code 侧只改 `%USERPROFILE%\.claude\settings.json`，不依赖 shell 启动配置。
 
 ## 推荐流程
 
 ```powershell
-.\scripts\CodexToClaude.ps1 install -Port <PORT> -ProxyUrl "<PROXY_URL_OR_none>"
+.\scripts\CodexToClaude.ps1 install -Port <PORT> -ProxyMode Auto -ProxyUrl "<HOST_PORT_OR_PROXY_URL>"
 .\scripts\CodexToClaude.ps1 login
-.\scripts\CodexToClaude.ps1 configure -Port <PORT> -ProxyUrl "<PROXY_URL_OR_none>"
+.\scripts\CodexToClaude.ps1 configure -Port <PORT> -ProxyMode Auto -ProxyUrl "<HOST_PORT_OR_PROXY_URL>"
 .\scripts\CodexToClaude.ps1 restart
 .\scripts\CodexToClaude.ps1 verify
 ```
+
+`ProxyMode` 可选 `Auto`、`Http`、`Socks5`、`Direct`。推荐代理用户使用 `Auto` 并填写 `127.0.0.1:7897` 这类 `host:port`；`verify` 遇到 HTTP 上游超时时会自动切换为同地址 SOCKS5 并重试。无代理用户使用 `-ProxyMode Direct`，兼容旧写法 `-ProxyUrl none`。
 
 如果 OAuth 浏览器登录不方便：
 
@@ -53,7 +55,7 @@
 - `/v1/models` 返回 Codex 模型列表。
 - `/v1/messages` 返回正常文本。
 - `%USERPROFILE%\.claude\settings.json` 的 `ANTHROPIC_BASE_URL` 指向 `http://127.0.0.1:<PORT>`。
-- Claude Code stream-json 检查中 `thinking_delta_count=0`。
+- Claude Code stream-json 检查能返回 `text_delta`；如果仍出现 `thinking_delta`，工具会提示警告而不是直接判失败。
 
 ## 排障入口
 
