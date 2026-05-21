@@ -56,6 +56,7 @@
 - `/v1/messages` 返回正常文本。
 - `%USERPROFILE%\.claude\settings.json` 的 `ANTHROPIC_BASE_URL` 指向 `http://127.0.0.1:<PORT>`。
 - Claude Code stream-json 检查能返回 `text_delta`；如果仍出现 `thinking_delta`，工具会提示警告而不是直接判失败。
+- Codex 后端的 `config.yaml` 包含 `passthrough-headers: true`，以便把上游 `X-Codex-Primary-*` / `X-Codex-Secondary-*` headers 透传给支持 Codex fallback 的状态栏插件显示 5h/7d usage limits。
 
 ## 排障入口
 

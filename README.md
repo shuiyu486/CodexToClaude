@@ -72,6 +72,18 @@ CodexToClaude-GUI.cmd
 | `Advanced Management` | 项目版本和二进制更新（独立窗口） |
 | `Diagnostics` | Start / Stop / Status / Doctor / 刷新登录状态 / 打开目录 |
 
+### Usage limits / 状态栏用量
+
+CodexToClaude 的 CLIProxyAPI 配置会写入 `passthrough-headers: true`，把上游返回的 `X-Codex-Primary-*` 和 `X-Codex-Secondary-*` 限额 headers 透传给 Claude Code 客户端。
+
+这些 headers 可被支持 Codex fallback 的状态栏插件（如 `cc-statusline`）读取，用于显示：
+
+- `5h`：Codex primary window，约 5 小时用量窗口
+- `7d`：Codex secondary window，约 7 天用量窗口
+- 重置倒计时：根据上游 reset 时间渲染
+
+注意：CodexToClaude 只负责**透传 headers**；Claude Code 官方的 `rate_limits` 字段是否出现由 Claude Code/上游协议决定。若状态栏插件要在 Codex 后端显示用量，需要插件主动读取这些 `X-Codex-*` headers 或其缓存。
+
 ## 🖥️ CLI 用法
 
 ### 首次安装（Codex）
