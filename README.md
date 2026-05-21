@@ -76,11 +76,13 @@ CodexToClaude-GUI.cmd
 
 CodexToClaude 的 CLIProxyAPI 配置会写入 `passthrough-headers: true`，把上游返回的 `X-Codex-Primary-*` 和 `X-Codex-Secondary-*` 限额 headers 透传给 Claude Code 客户端。
 
-这些 headers 可被支持 Codex fallback 的状态栏插件（如 `cc-statusline`）读取，用于显示：
+这些 headers 可被支持 Codex fallback 的状态栏插件读取，用于显示：
 
 - `5h`：Codex primary window，约 5 小时用量窗口
 - `7d`：Codex secondary window，约 7 天用量窗口
 - 重置倒计时：根据上游 reset 时间渲染
+
+推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
 
 注意：CodexToClaude 只负责**透传 headers**；Claude Code 官方的 `rate_limits` 字段是否出现由 Claude Code/上游协议决定。若状态栏插件要在 Codex 后端显示用量，需要插件主动读取这些 `X-Codex-*` headers 或其缓存。
 
