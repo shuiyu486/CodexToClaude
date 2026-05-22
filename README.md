@@ -19,9 +19,7 @@
 
 ## Preface
 
-While using cc-switch and other similar projects, I noticed that they still have certain compatibility issues when translating and adapting the GPT protocol. These issues can cause request errors, unexpected responses, or unstable behavior when used with Claude Code.
-
-The goal of this project is to address these pain points and provide a more stable and accurate protocol adaptation solution, enabling Codex Plus/Pro and other GPT subscription plans to be used properly and smoothly within Claude Code.
+While using cc-switch and other similar projects, I noticed that they still have certain compatibility issues when translating and adapting the GPT protocol. These issues can cause request errors, unexpected responses, or unstable behavior when used with Claude Code.The goal of this project is to address these pain points and provide a more stable and accurate protocol adaptation solution, enabling Codex Plus/Pro and other GPT subscription plans to be used properly and smoothly within Claude Code.
 
 CodexToClaude is a Windows-first local proxy setup tool. It installs, configures, starts, and verifies backend proxies, then points Claude Code at your local Anthropic-compatible endpoint.
 
