@@ -17,6 +17,12 @@
   <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.8-lightgrey.svg"></a>
 </p>
 
+## Preface
+
+While using cc-switch and other similar projects, I noticed that they still have certain compatibility issues when translating and adapting the GPT protocol. These issues can cause request errors, unexpected responses, or unstable behavior when used with Claude Code.
+
+The goal of this project is to address these pain points and provide a more stable and accurate protocol adaptation solution, enabling Codex Plus/Pro and other GPT subscription plans to be used properly and smoothly within Claude Code.
+
 CodexToClaude is a Windows-first local proxy setup tool. It installs, configures, starts, and verifies backend proxies, then points Claude Code at your local Anthropic-compatible endpoint.
 
 ```text
@@ -35,6 +41,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🚀 **Guided GUI setup** — Double-click `CodexToClaude-GUI.cmd` and follow the wizard: install, login, configure, restart, verify.
 - 🔀 **Two model sources** — Switch between Codex and OpenCode Go from one UI without duplicating setup logic.
 - 🧩 **Claude Code auto-config** — Merges only target `env` values into `~/.claude/settings.json`, preserving statusLine, permissions, language, and other settings.
+- 📊 **Usage limits in status line** — Recommended with [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline), which reads CodexToClaude's forwarded `X-Codex-*` headers and shows 5h/7d usage limits.
 - 🌐 **Proxy modes built in** — Supports `Auto`, `Http`, `Socks5`, and `Direct`; `Auto` can retry with SOCKS5 after HTTP timeout-style failures.
 - 🧪 **End-to-end verification** — Checks `/v1/models`, `/v1/messages`, and Claude Code stream-json.
 - 📦 **Version management** — View and update the project and provider binaries from either the GUI or CLI.
@@ -293,6 +300,8 @@ A compatible status line plugin can use those headers to show:
 - Primary usage window, usually around 5 hours.
 - Secondary usage window, usually around 7 days.
 - Reset countdowns.
+
+Recommended companion plugin: [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline), which reads CodexToClaude's forwarded `X-Codex-*` headers and shows the 5h/7d usage limits in your Claude Code status line.
 
 CodexToClaude only forwards headers; rendering usage limits is handled by your status line plugin.
 

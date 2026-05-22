@@ -17,6 +17,12 @@
   <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.8-lightgrey.svg"></a>
 </p>
 
+## 前言
+
+在使用 cc-switch 及其他类似项目的过程中，我发现它们在 GPT 协议转换与适配方面仍存在一些兼容性问题。这些问题可能会导致 Claude Code 在实际使用中出现请求异常、响应错误或功能不稳定等情况。
+
+本项目的目标是针对这些痛点进行改进，提供更加稳定、准确的协议适配方案，使 Codex Plus/Pro 等 GPT 订阅套餐能够在 Claude Code 中正常、流畅地使用。
+
 CodexToClaude 是一个 Windows 优先的本地代理配置工具。它帮你安装、配置、启动和验证后端代理，并自动把 Claude Code 指向本机接口。
 
 ```text
@@ -35,6 +41,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🚀 **GUI 向导式安装** — 双击 `CodexToClaude-GUI.cmd`，按向导完成安装、登录、配置、重启、验证。
 - 🔀 **双模型来源** — Codex / OpenCode Go 一键切换，不复制业务逻辑。
 - 🧩 **自动配置 Claude Code** — 只合并更新 `~/.claude/settings.json` 的目标 `env`，保留 statusLine、permissions、language 等设置。
+- 📊 **状态栏用量显示** — 推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
 - 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在 HTTP 超时后尝试 SOCKS5。
 - 🧪 **端到端验证** — 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
 - 📦 **版本管理** — GUI 和 CLI 都能查看/更新项目与后端二进制。
@@ -293,7 +300,9 @@ Codex 后端会在 CLIProxyAPI 配置中启用 `passthrough-headers: true`，把
 - 约 7 天窗口的 secondary usage limit。
 - 对应 reset 倒计时。
 
-推荐配合支持 Codex fallback usage limits 的状态栏插件使用。CodexToClaude 只负责透传 headers，不负责状态栏渲染。
+推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
+
+CodexToClaude 只负责透传 headers，不负责状态栏渲染。
 
 ## 💭 关于 thinking 输出
 
