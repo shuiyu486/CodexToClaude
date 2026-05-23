@@ -131,11 +131,13 @@ passthrough-headers: true
 quota-exceeded:
   switch-project: true
   switch-preview-model: true
+  antigravity-credits: false
 
-request-retry: 3
-max-retry-interval: 30
+request-retry: 1
+max-retry-credentials: 1
+max-retry-interval: 5
 streaming:
-  bootstrap-retries: 5
+  bootstrap-retries: 1
   keepalive-seconds: 15
 debug: true
 logging-to-file: true
@@ -162,6 +164,49 @@ function CLIProxy-GetConfigValue([string]$Name) {
     $m = [regex]::Match($raw, "(?m)^$escaped\s*:\s*`"?([^`"\r\n#]+)`"?\s*$")
     if ($m.Success) { return $m.Groups[1].Value.Trim() }
     return $null
+}
+
+function CLIProxy-GetRiskDiagnostics {
+    $items = @()
+    if (-not (Test-Path $ConfigPath)) { return @([pscustomobject]@{ Level = 'warn'; Message = "CLIProxy config missing: $ConfigPath" }) }
+    $raw = Get-Content $ConfigPath -Raw -Encoding UTF8
+
+    $requestRetry = CLIProxy-GetConfigValue 'request-retry'
+    if ($requestRetry -and [int]$requestRetry -gt 1) { $items += [pscustomobject]@{ Level = 'warn'; Message = "request-retry=$requestRetry may make upstream failures look like hangs; recommended value is 1." } }
+
+    $maxRetryCredentials = CLIProxy-GetConfigValue 'max-retry-credentials'
+    if (-not $maxRetryCredentials) { $items += [pscustomobject]@{ Level = 'warn'; Message = 'max-retry-credentials is missing; recommended value is 1.' } }
+    elseif ([int]$maxRetryCredentials -gt 1) { $items += [pscustomobject]@{ Level = 'warn'; Message = "max-retry-credentials=$maxRetryCredentials may extend failures across credentials; recommended value is 1." } }
+
+    $maxRetryInterval = CLIProxy-GetConfigValue 'max-retry-interval'
+    if ($maxRetryInterval -and [int]$maxRetryInterval -gt 5) { $items += [pscustomobject]@{ Level = 'warn'; Message = "max-retry-interval=$maxRetryInterval may delay failure visibility; recommended value is 5." } }
+
+    if ($raw -match '(?m)^\s*bootstrap-retries:\s*(\d+)') {
+        if ([int]$matches[1] -gt 1) { $items += [pscustomobject]@{ Level = 'warn'; Message = "streaming.bootstrap-retries=$($matches[1]) may delay stream failures; recommended value is 1." } }
+    } else {
+        $items += [pscustomobject]@{ Level = 'warn'; Message = 'streaming.bootstrap-retries is missing; recommended value is 1.' }
+    }
+
+    if ($raw -notmatch '(?m)^\s*antigravity-credits:\s*false\s*$') {
+        $items += [pscustomobject]@{ Level = 'warn'; Message = 'quota-exceeded.antigravity-credits should be false to avoid unexpected fallback paths.' }
+    }
+
+    if ($raw -notmatch 'payload:\s*[\s\S]*filter:' -or $raw -notmatch 'reasoning\.effort' -or $raw -notmatch '(?m)^\s*-\s*"reasoning"\s*$') {
+        $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter should remove reasoning and reasoning.effort for Codex models.' }
+    }
+
+    $configProxy = Read-ConfigProxyUrl
+    if ($configProxy) {
+        foreach ($file in (CLIProxy-GetAuthFiles)) {
+            try {
+                $auth = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($auth.type -eq 'codex' -and $auth.disabled -ne $true -and $auth.proxy_url -and $auth.proxy_url -ne $configProxy) {
+                    $items += [pscustomobject]@{ Level = 'warn'; Message = "Auth file $($file.Name) proxy_url differs from config proxy-url." }
+                }
+            } catch { }
+        }
+    }
+    return $items
 }
 
 function CLIProxy-GetAuthFiles {
@@ -252,8 +297,24 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
     if (-not (Test-Path $ConfigPath)) { throw "Missing config: $ConfigPath" }
     $existing = Get-PortProcesses $ResolvedPort
     if ($existing.Count -gt 0) {
-        Write-OK "Port $ResolvedPort is already listening."
-        return
+        foreach ($proc in $existing) {
+            $nameMatch = $proc.ProcessName -eq 'cli-proxy-api'
+            $pathMatch = $false
+            if (-not $nameMatch) {
+                try { $pathMatch = ($proc.Path -eq $ExePath) } catch { }
+            }
+            if (-not ($nameMatch -or $pathMatch)) {
+                throw "Port $ResolvedPort is owned by $($proc.ProcessName) pid=$($proc.Id), not cli-proxy-api. Refusing to reuse it."
+            }
+        }
+        $health = Test-ServiceHealth $ResolvedPort '/healthz' 2
+        if ($health.Healthy) {
+            Write-OK "Port $ResolvedPort is already listening and healthy."
+            return
+        }
+        $tail = Get-SafeLogTail $LogPath 30
+        $detail = if ($tail) { "`nRecent CLIProxy log:`n$tail" } else { '' }
+        throw "CLIProxyAPI is listening on port $ResolvedPort but health check failed: $($health.Error). Run verify or restart to recover.$detail"
     }
     $stderr = Join-Path $env:TEMP "cliproxystart-$([guid]::NewGuid().ToString()).err"
     $prevHttpsProxy = [Environment]::GetEnvironmentVariable('HTTPS_PROXY')
@@ -276,8 +337,8 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
         }
         if (-not (Wait-ServiceReady $ResolvedPort 20 '/healthz')) {
             $tail = ''
-            if (Test-Path $stderr) { $tail = (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) }
-            if (-not $tail -and (Test-Path $LogPath)) { $tail = (Get-Content $LogPath -Tail 30 -ErrorAction SilentlyContinue | Out-String) }
+            if (Test-Path $stderr) { $tail = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30 }
+            if (-not $tail -and (Test-Path $LogPath)) { $tail = Get-SafeLogTail $LogPath 30 }
             throw "CLIProxyAPI did not become ready on port $ResolvedPort.`n$tail"
         }
         Write-OK "Started cli-proxy-api pid=$($proc.Id)"

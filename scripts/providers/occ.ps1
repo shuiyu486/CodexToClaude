@@ -269,8 +269,22 @@ function OCC-StartProcess([int]$ResolvedPort) {
     if (-not (Test-Path $defaultPidDir)) { New-Item -ItemType Directory -Force $defaultPidDir | Out-Null }
     $existing = Get-PortProcesses $ResolvedPort
     if ($existing.Count -gt 0) {
-        Write-OK "Port $ResolvedPort is already listening."
-        return
+        foreach ($proc in $existing) {
+            $nameMatch = $proc.ProcessName -eq 'oc-go-cc'
+            $pathMatch = $false
+            if (-not $nameMatch) {
+                try { $pathMatch = ($proc.Path -eq $ExePath) } catch { }
+            }
+            if (-not ($nameMatch -or $pathMatch)) {
+                throw "Port $ResolvedPort is owned by $($proc.ProcessName) pid=$($proc.Id), not oc-go-cc. Refusing to reuse it."
+            }
+        }
+        $health = Test-ServiceHealth $ResolvedPort '/health' 2
+        if ($health.Healthy) {
+            Write-OK "Port $ResolvedPort is already listening and healthy."
+            return
+        }
+        throw "oc-go-cc is listening on port $ResolvedPort but health check failed: $($health.Error). Run verify or restart to recover."
     }
     $stdout = Join-Path $env:TEMP "occ-start-$([guid]::NewGuid().ToString()).out"
     $stderr = Join-Path $env:TEMP "occ-start-$([guid]::NewGuid().ToString()).err"

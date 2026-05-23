@@ -28,6 +28,19 @@ function Assert-Syntax([string]$Path) {
     if ($errors.Count -gt 0) { throw ($errors | Select-Object -First 1 | Out-String) }
 }
 
+function Get-FunctionAst([string]$Path, [string]$Name) {
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$errors)
+    if ($errors.Count -gt 0) { throw "Could not parse $Path." }
+    $func = $ast.Find({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
+    }, $true)
+    if (-not $func) { throw "Could not locate function $Name." }
+    return $func
+}
+
 TestCase 'CLI PowerShell syntax parses' {
     Assert-Syntax $Script
 }
@@ -42,6 +55,84 @@ TestCase 'GUI launcher exists' {
     if ($content -notmatch 'CodexToClaude.UI.ps1') { throw 'GUI launcher does not start UI script.' }
 }
 
+TestCase 'Wait-ServiceReady requires health endpoint success' {
+    $func = Get-FunctionAst $Script 'Wait-ServiceReady'
+    $body = $func.Body.Extent.Text
+    if ($body -match 'Get-PortProcesses[\s\S]{0,160}\$ResolvedPort[\s\S]{0,160}-gt\s+0[\s\S]{0,120}return\s+\$true') {
+        throw 'Wait-ServiceReady must not treat a listening port as service-ready without a successful health response.'
+    }
+    if ($body -notmatch 'Test-ServiceHealth') {
+        throw 'Wait-ServiceReady should still probe the provider health endpoint through Test-ServiceHealth.'
+    }
+}
+
+TestCase 'Claude stream-json check uses bounded watchdog' {
+    $func = Get-FunctionAst $Script 'Test-ClaudeStreamJson'
+    $body = $func.Body.Extent.Text
+    $commands = @($func.Body.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
+    foreach ($cmd in $commands) {
+        if ($cmd.GetCommandName() -eq 'Start-Process' -and $cmd.Extent.Text -match '--output-format=stream-json' -and $cmd.Extent.Text -match '(^|\s)-Wait(\s|$)') {
+            throw 'Claude stream-json check must not use Start-Process -Wait without a watchdog.'
+        }
+    }
+    if ($body -notmatch '\$streamTimeoutSeconds\s*=\s*60') {
+        throw 'Claude stream-json watchdog must be 60 seconds.'
+    }
+    if ($body -notmatch 'stream-json check timed out after 60 seconds') {
+        throw 'Claude stream-json timeout error message must be stable for diagnostics.'
+    }
+    if ($body -notmatch 'Stop-Process\s+-Id\s+\$proc\.Id') {
+        throw 'Claude stream-json watchdog must stop the hung claude.exe process.'
+    }
+}
+
+TestCase 'Status remains read-only' {
+    $func = Get-FunctionAst $Script 'Show-Status'
+    $body = $func.Body.Extent.Text
+    $commands = @($func.Body.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
+    $commandNames = @($commands | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ })
+    foreach ($blocked in @('Stop-Process', 'Start-Process', 'Try-AutoSwitchToSocks5', 'Configure-Claude')) {
+        if ($commandNames -contains $blocked) {
+            throw 'Show-Status must diagnose only and must not start, stop, restart, switch proxy, or rewrite settings.'
+        }
+    }
+    if ($body -notmatch 'Test-ServiceHealth') {
+        throw 'Show-Status should include a read-only health snapshot.'
+    }
+}
+
+TestCase 'Redaction helper contains required sensitive patterns' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    if ($source -notmatch 'function\s+Redact-SensitiveText') { throw 'Redact-SensitiveText function missing.' }
+    foreach ($pattern in @('Authorization', 'Bearer', 'access_token', 'refresh_token', 'id_token', 'x-api-key', 'sk-')) {
+        if ($source -notmatch [regex]::Escape($pattern)) { throw "Redaction helper missing pattern: $pattern" }
+    }
+}
+
+TestCase 'Provider start validates health for existing listeners' {
+    $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
+    $occ = Get-Content (Join-Path $RepoRoot 'scripts\providers\occ.ps1') -Raw -Encoding UTF8
+    if ($clip -notmatch 'Test-ServiceHealth\s+\$ResolvedPort\s+''/healthz''') { throw 'CLIProxy existing listener path must check /healthz.' }
+    if ($occ -notmatch 'Test-ServiceHealth\s+\$ResolvedPort\s+''/health''') { throw 'OCC existing listener path must check /health.' }
+    if ($clip -match 'Port \$ResolvedPort is already listening\."\s*\r?\n\s*return') { throw 'CLIProxy must not return success for any existing listener without health.' }
+    if ($occ -match 'Port \$ResolvedPort is already listening\."\s*\r?\n\s*return') { throw 'OCC must not return success for any existing listener without health.' }
+}
+
+TestCase 'CLIProxy risk diagnostics checks hang-prone configuration' {
+    $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
+    if ($clip -notmatch 'function\s+CLIProxy-GetRiskDiagnostics') { throw 'CLIProxy-GetRiskDiagnostics missing.' }
+    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits', 'payload.filter', 'reasoning.effort')) {
+        if ($clip -notmatch [regex]::Escape($field)) { throw "CLIProxy risk diagnostics missing check for $field" }
+    }
+}
+
+TestCase 'Verify uses a single restart recovery attempt' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    if ($source -notmatch 'function\s+Invoke-VerifyCore') { throw 'Invoke-VerifyCore function missing.' }
+    if ($source -notmatch 'function\s+Invoke-VerifyWithRecovery') { throw 'Invoke-VerifyWithRecovery function missing.' }
+    if ($source -notmatch '\$recoveryAttempted\s*=\s*\$false') { throw 'Verify recovery must track a single attempt.' }
+    if ($source -notmatch 'Attempting one restart recovery before retrying verify') { throw 'Verify recovery message missing.' }
+}
 
 TestCase 'Project VERSION file exists and is semantic' {
     if (-not (Test-Path $VersionFile)) { throw 'VERSION file missing.' }
@@ -69,6 +160,9 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }
         if ($config -notmatch '(?m)^passthrough-headers:\s*true\r?$') { throw 'CLIProxy should forward upstream response headers.' }
+        if ($config -notmatch '(?m)^request-retry:\s*1\r?$') { throw 'CLIProxy request retry should be bounded.' }
+        if ($config -notmatch '(?m)^max-retry-credentials:\s*1\r?$') { throw 'CLIProxy credential retry should be bounded.' }
+        if ($config -notmatch '(?m)^\s*antigravity-credits:\s*false\r?$') { throw 'CLIProxy should not fall back to Antigravity credits by default.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-5.5') { throw 'Default Opus model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-5.4') { throw 'Default Sonnet model name mismatch.' }
     } finally {

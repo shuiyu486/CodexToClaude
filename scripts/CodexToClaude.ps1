@@ -335,18 +335,67 @@ function Wait-PortFree([int]$ResolvedPort, [int]$TimeoutSeconds) {
     return $false
 }
 
+function Redact-SensitiveText([string]$Text) {
+    if ($null -eq $Text -or $Text -eq '') { return $Text }
+    $redacted = $Text
+    $redacted = $redacted -replace '(?i)(Authorization\s*:\s*Bearer\s+)[^\s"'']+', '$1[REDACTED]'
+    $redacted = $redacted -replace '(?i)((x-api-key|api[_-]?key|access_token|refresh_token|id_token)\s*[:=]\s*["'']?)[^\s,"'']+', '$1[REDACTED]'
+    $redacted = $redacted -replace 'sk-[A-Za-z0-9._-]+', 'sk-[REDACTED]'
+    $redacted = $redacted -replace '(socks5|http|https)://([^:\s/@]+):([^@\s]+)@', '$1://[REDACTED]@'
+    return $redacted
+}
+
+function Get-SafeTextTail([string]$Text, [int]$MaxLines = 30, [int]$MaxChars = 6000) {
+    if ($null -eq $Text -or $Text -eq '') { return '' }
+    $safe = Redact-SensitiveText $Text
+    $lines = $safe -split "`r?`n"
+    if ($lines.Count -gt $MaxLines) { $lines = $lines[($lines.Count - $MaxLines)..($lines.Count - 1)] }
+    $joined = ($lines -join "`n")
+    if ($joined.Length -gt $MaxChars) { $joined = $joined.Substring($joined.Length - $MaxChars) }
+    return $joined
+}
+
+function Get-SafeLogTail([string]$Path, [int]$TailLines = 30) {
+    if (-not $Path -or -not (Test-Path $Path)) { return '' }
+    try {
+        $raw = Get-Content $Path -Tail $TailLines -ErrorAction SilentlyContinue | Out-String
+        return Get-SafeTextTail $raw $TailLines
+    } catch {
+        return ''
+    }
+}
+
+function Test-ServiceHealth([int]$ResolvedPort, [string]$HealthEndpoint, [int]$TimeoutSeconds = 2) {
+    if (-not $HealthEndpoint) { $HealthEndpoint = $PMeta.HealthEndpoint }
+    $healthUrl = "http://127.0.0.1:$ResolvedPort$HealthEndpoint"
+    $started = Get-Date
+    try {
+        $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec $TimeoutSeconds
+        return [pscustomobject]@{
+            Healthy = $true
+            Url = $healthUrl
+            StatusCode = $response.StatusCode
+            DurationMs = [int]((Get-Date) - $started).TotalMilliseconds
+            Error = $null
+        }
+    } catch {
+        return [pscustomobject]@{
+            Healthy = $false
+            Url = $healthUrl
+            StatusCode = $null
+            DurationMs = [int]((Get-Date) - $started).TotalMilliseconds
+            Error = $_.Exception.Message
+        }
+    }
+}
+
 function Wait-ServiceReady([int]$ResolvedPort, [int]$TimeoutSeconds, [string]$HealthEndpoint) {
     if (-not $HealthEndpoint) { $HealthEndpoint = $PMeta.HealthEndpoint }
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    $healthUrl = "http://127.0.0.1:$ResolvedPort$HealthEndpoint"
     while ((Get-Date) -lt $deadline) {
-        try {
-            Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2 | Out-Null
-            return $true
-        } catch {
-            if ((Get-PortProcesses $ResolvedPort).Count -gt 0) { return $true }
-            Start-Sleep -Milliseconds 500
-        }
+        $health = Test-ServiceHealth $ResolvedPort $HealthEndpoint 2
+        if ($health.Healthy) { return $true }
+        Start-Sleep -Milliseconds 500
     }
     return $false
 }
@@ -443,20 +492,36 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
     $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $SonnetModel
     $stdout = Join-Path $env:TEMP "ctc-claude-stdout-$([guid]::NewGuid().ToString()).txt"
     $stderr = Join-Path $env:TEMP "ctc-claude-stderr-$([guid]::NewGuid().ToString()).txt"
+    $stdin = Join-Path $env:TEMP "ctc-claude-stdin-$([guid]::NewGuid().ToString()).txt"
+    $streamTimeoutSeconds = 60
+    $proc = $null
     try {
-        $proc = Start-Process -FilePath $claude.Source -ArgumentList @('-p', 'Say OK in one word.', '--output-format=stream-json', '--include-partial-messages', '--verbose') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        [System.IO.File]::WriteAllText($stdin, '', [System.Text.Encoding]::UTF8)
+        $proc = Start-Process -FilePath $claude.Source -ArgumentList @('-p', 'Say OK in one word.', '--output-format=stream-json', '--include-partial-messages', '--verbose') -NoNewWindow -PassThru -RedirectStandardInput $stdin -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $deadline = (Get-Date).AddSeconds($streamTimeoutSeconds)
+        while (-not $proc.HasExited -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+            try { $proc.Refresh() } catch { }
+        }
+        if (-not $proc.HasExited) {
+            try { Stop-Process -Id $proc.Id -Force -Confirm:$false } catch { }
+            $errTail = ''
+            if (Test-Path $stderr) { $errTail = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 20 }
+            throw "Claude stream-json check timed out after 60 seconds. Local proxy may be hung or not draining streaming responses. $errTail"
+        }
+        try { $proc.WaitForExit(1000) | Out-Null; $proc.Refresh() } catch { }
         $output = ''
         if (Test-Path $stdout) { $output += Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
-        if ($proc.ExitCode -ne 0) {
+        if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
             $err = ''
-            if (Test-Path $stderr) { $err = Get-Content $stderr -Raw -ErrorAction SilentlyContinue }
+            if (Test-Path $stderr) { $err = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30 }
             throw "claude.exe exited with code $($proc.ExitCode). $err"
         }
     } finally {
         $env:ANTHROPIC_AUTH_TOKEN = $origToken
         $env:ANTHROPIC_BASE_URL = $origUrl
         $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $origModel
-        Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+        Remove-Item $stdout, $stderr, $stdin -Force -ErrorAction SilentlyContinue
     }
     $thinkingCount = ([regex]::Matches($output, 'thinking_delta')).Count
     $textCount = ([regex]::Matches($output, 'text_delta')).Count
@@ -464,6 +529,12 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
     if ($textCount -eq 0) { throw 'Claude stream-json did not contain text_delta.' }
     if ($thinkingCount -eq 0) { Write-OK "Claude stream-json check passed: thinking_delta_count=0, text_delta_count=$textCount" }
     else { Write-OK "Claude stream-json text check passed: text_delta_count=$textCount" }
+}
+
+function Get-ProviderRiskDiagnostics {
+    $func = "$($PMeta.Prefix)-GetRiskDiagnostics"
+    if (Get-Command $func -ErrorAction SilentlyContinue) { return @(& $func) }
+    return @()
 }
 
 function Show-Status([int]$ResolvedPort) {
@@ -478,6 +549,24 @@ function Show-Status([int]$ResolvedPort) {
     } else {
         Write-Warn "Nothing is listening on $ResolvedPort"
     }
+    $health = Test-ServiceHealth $ResolvedPort $PMeta.HealthEndpoint 2
+    if ($health.Healthy) { Write-OK "Health: ready ($($health.Url), $($health.DurationMs)ms)" }
+    else { Write-Warn "Health: not ready ($($health.Url)): $($health.Error)" }
+
+    $risks = @(Get-ProviderRiskDiagnostics)
+    if ($risks.Count -gt 0) {
+        Write-Info 'Risk diagnostics:'
+        foreach ($risk in $risks) { Write-Warn "  - $($risk.Message)" }
+    } else {
+        Write-OK 'Risk diagnostics: no known hang-prone configuration detected.'
+    }
+
+    $logTail = Get-SafeLogTail $LogPath 10
+    if ($logTail) {
+        Write-Info 'Recent sanitized log tail:'
+        Write-Info $logTail
+    }
+
     if (Test-Path $ClaudeSettingsPath) {
         try {
             $settings = Get-Content $ClaudeSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -524,7 +613,7 @@ function Invoke-MessageWithAutoProxy([int]$ResolvedPort) {
     }
 }
 
-function Verify-Setup([int]$ResolvedPort) {
+function Invoke-VerifyCore([int]$ResolvedPort) {
     Write-Step 'Verifying setup'
     Assert-AuthReady
     $startFunc = "$($PMeta.Prefix)-StartProcess"
@@ -544,6 +633,39 @@ function Verify-Setup([int]$ResolvedPort) {
     if (-not $text) { throw '/v1/messages returned no text content.' }
     Write-OK "/v1/messages returned text: $text"
     Test-ClaudeStreamJson $ResolvedPort
+}
+
+function Invoke-VerifyWithRecovery([int]$ResolvedPort) {
+    $recoveryAttempted = $false
+    try {
+        Invoke-VerifyCore $ResolvedPort
+        return
+    } catch {
+        $firstError = $_
+        if ($recoveryAttempted) { throw }
+        $recoveryAttempted = $true
+        Write-Warn "Verify failed: $($firstError.Exception.Message)"
+        Write-Warn 'Attempting one restart recovery before retrying verify.'
+        $stopFunc = "$($PMeta.Prefix)-StopProcess"
+        $startFunc = "$($PMeta.Prefix)-StartProcess"
+        try { & $stopFunc $ResolvedPort } catch { Write-Warn "Recovery stop failed: $($_.Exception.Message)" }
+        & $startFunc $ResolvedPort
+        try {
+            Invoke-VerifyCore $ResolvedPort
+            Write-OK 'Verify passed after one restart recovery.'
+        } catch {
+            $logTail = Get-SafeLogTail $LogPath 30
+            if ($logTail) {
+                Write-Warn 'Recent sanitized provider log tail:'
+                Write-Warn $logTail
+            }
+            throw "Verify failed after one restart recovery. First error: $($firstError.Exception.Message). Second error: $($_.Exception.Message)"
+        }
+    }
+}
+
+function Verify-Setup([int]$ResolvedPort) {
+    Invoke-VerifyWithRecovery $ResolvedPort
 }
 
 # ============================================================
