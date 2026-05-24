@@ -98,7 +98,7 @@ CodexToClaude 基于 CLIProxyAPI 和 oc-go-cc 构建：
 - CodexToClaude 负责 Windows 友好的安装、配置、启停、诊断、更新和 GUI 编排
 
 - 项目更新使用 `project-update`，只允许在 git 工作区干净时执行 `git fetch` + `git pull --ff-only`，避免覆盖用户未提交改动。
-- 二进制更新使用 `cliproxy-update`（同时作用于当前 `-Provider`），流程是 stop -> 下载 latest release -> 备份旧 exe -> 替换 -> 如原本运行则 start。下载失败时必须重启原有服务。
+- 二进制更新使用 `cliproxy-update`（同时作用于当前 `-Provider`），流程是 stop -> 下载 latest release -> staged exe -> 备份旧 exe -> 删除旧 exe -> 移动 staged exe -> 如原本运行则 start。Windows PowerShell 5.1 下不要依赖 `Move-Item -Force` 覆盖已存在 exe；替换失败时必须从备份恢复并重启原有服务。
 - 自动下载只选择 GitHub release 中 Windows x64 / amd64 的 zip 或 exe asset。
 - 更新后必须保留 `-config` 和 `WorkingDirectory` 设为 `$InstallDir` 的启动契约。
 - 修改版本管理逻辑后，除脚本测试外，涉及真实服务管理时仍需跑 `restart` 和 `verify`。
@@ -141,7 +141,7 @@ payload:
 
 ## 主 agent 卡住防护
 
-`start` 和 `restart` 必须把 provider readiness 定义为 health endpoint 成功响应，而不是仅有 TCP 端口监听。CLIProxy 启动后必须同时启动 CodexToClaude watchdog；`stop` 必须关闭 watchdog。watchdog 监控启动后的新 `/v1/messages` 长请求，默认 60 秒仍未完成时自动重启当前 CLIProxy provider，等价于用户手动点 GUI 重启；高级用户可通过 `-WatchdogTimeoutSeconds` 调整阈值。
+`start` 和 `restart` 必须把 provider readiness 定义为 health endpoint 成功响应，而不是仅有 TCP 端口监听。端口拥有者判断只能使用 `Listen` 状态且 `OwningProcess > 0` 的 socket，避免把 Windows 残留的 `Idle pid=0` 连接误判为端口占用。CLIProxy 启动后必须同时启动 CodexToClaude watchdog；`stop` 必须关闭 watchdog。watchdog 监控启动后的新 `/v1/messages` 长请求，默认 30 秒仍未完成时自动重启当前 CLIProxy provider，等价于用户手动点 GUI 重启；恢复尝试后必须重置观察窗口，避免旧 stale request 留在日志尾部导致重复重启。高级用户可通过 `-WatchdogTimeoutSeconds` 调整阈值。
 
 `verify` 和 `doctor` 遇到可恢复的本地代理或 stream-json 探测失败时，可以自动重启当前 provider 一次并重试；`status` 必须保持只读，不得 start、stop、restart、重写 config 或切换代理模式。
 

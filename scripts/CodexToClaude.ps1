@@ -23,7 +23,7 @@ param(
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
     [switch]$Json,
-    [int]$WatchdogTimeoutSeconds = 60
+    [int]$WatchdogTimeoutSeconds = 30
 )
 
 $ErrorActionPreference = 'Stop'
@@ -316,7 +316,8 @@ function Resolve-Port([bool]$RequirePrompt) {
 function Ensure-InstallDir { if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Force $InstallDir | Out-Null } }
 
 function Get-PortProcesses([int]$ResolvedPort) {
-    $connections = Get-NetTCPConnection -LocalPort $ResolvedPort -ErrorAction SilentlyContinue
+    $connections = Get-NetTCPConnection -LocalPort $ResolvedPort -ErrorAction SilentlyContinue |
+        Where-Object { $_.State -eq 'Listen' -and $_.OwningProcess -gt 0 }
     if (-not $connections) { return @() }
     $ids = $connections | Select-Object -ExpandProperty OwningProcess -Unique
     $result = @()
@@ -468,8 +469,10 @@ function Invoke-ProviderWatchdog([int]$ResolvedPort) {
             $startFunc = "$($PMeta.Prefix)-StartProcess"
             & $stopFunc $ResolvedPort
             & $startFunc $ResolvedPort
+            $watchStartedAt = Get-Date
         } catch {
             Add-Content -Path (Join-Path $InstallDir 'codextoclaude-watchdog.log') -Value "$(Get-Date -Format s) watchdog recovery failed: $($_.Exception.Message)" -Encoding UTF8
+            $watchStartedAt = Get-Date
         }
     }
 }

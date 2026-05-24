@@ -126,6 +126,12 @@ TestCase 'CLIProxy risk diagnostics checks hang-prone configuration' {
     }
 }
 
+TestCase 'Port process detection ignores stale TCP connections' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    if ($source -notmatch "\.State\s+-eq\s+'Listen'") { throw 'Get-PortProcesses should only treat listening sockets as port owners.' }
+    if ($source -notmatch '\.OwningProcess\s+-gt\s+0') { throw 'Get-PortProcesses should ignore Idle pid=0 connections.' }
+}
+
 TestCase 'Verify uses a single restart recovery attempt' {
     $source = Get-Content $Script -Raw -Encoding UTF8
     if ($source -notmatch 'function\s+Invoke-VerifyCore') { throw 'Invoke-VerifyCore function missing.' }
@@ -143,9 +149,16 @@ TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
     foreach ($cmd in @('watchdog-run', 'watchdog-start', 'watchdog-stop')) {
         if ($source -notmatch [regex]::Escape("'$cmd'")) { throw "Command missing: $cmd" }
     }
-    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*60') { throw 'Watchdog timeout should be 60 seconds.' }
+    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*30') { throw 'Watchdog timeout should be 30 seconds.' }
+    if ($source -notmatch '\$watchStartedAt\s*=\s*Get-Date[\s\S]*catch') { throw 'Watchdog should reset its observation window after recovery.' }
     if ($clip -notmatch 'Start-ProviderWatchdog\s+\$ResolvedPort') { throw 'CLIProxy start should start watchdog.' }
     if ($clip -notmatch 'Stop-ProviderWatchdog') { throw 'CLIProxy stop should stop watchdog.' }
+}
+
+TestCase 'CLIProxy update replaces existing exe safely' {
+    $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
+    if ($clip -notmatch 'Remove-Item\s+\$ExePath\s+-Force') { throw 'CLIProxy update should remove the existing exe before Move-Item on Windows PowerShell 5.1.' }
+    if ($clip -notmatch 'Restored previous cli-proxy-api\.exe after update failure') { throw 'CLIProxy update should restore backup after replacement failure.' }
 }
 
 TestCase 'Project VERSION file exists and is semantic' {
