@@ -55,6 +55,21 @@ TestCase 'GUI launcher exists' {
     if ($content -notmatch 'CodexToClaude.UI.ps1') { throw 'GUI launcher does not start UI script.' }
 }
 
+TestCase 'GUI streams command output while process runs' {
+    $source = Get-Content $UiScript -Raw -Encoding UTF8
+    if ($source -notmatch 'function\s+Read-NewOutput') { throw 'GUI should read command output incrementally.' }
+    if ($source -notmatch 'while\s*\(\s*-not\s+\$proc\.HasExited\s*\)[\s\S]{0,220}Read-NewOutput') { throw 'GUI should append stdout before the command exits so device login codes are visible.' }
+    if ($source -notmatch '\$deviceCheck\.Checked\s+-and\s+\$Command\s+-eq\s+''login''[\s\S]{0,80}''-Device''') { throw 'GUI login should pass -Device when device login is checked.' }
+}
+
+TestCase 'GUI log box resizes and preserves readable output' {
+    $source = Get-Content $UiScript -Raw -Encoding UTF8
+    if ($source -notmatch 'function\s+Normalize-LogText') { throw 'GUI should normalize log newlines before appending.' }
+    if ($source -notmatch '\$logGroup\.Anchor\s*=\s*\[System\.Windows\.Forms\.AnchorStyles\]::Top\s+-bor\s+\[System\.Windows\.Forms\.AnchorStyles\]::Bottom\s+-bor\s+\[System\.Windows\.Forms\.AnchorStyles\]::Left\s+-bor\s+\[System\.Windows\.Forms\.AnchorStyles\]::Right') { throw 'Log group should resize with the main window.' }
+    if ($source -notmatch '\$logBox\.Anchor\s*=\s*\[System\.Windows\.Forms\.AnchorStyles\]::Top\s+-bor\s+\[System\.Windows\.Forms\.AnchorStyles\]::Bottom\s+-bor\s+\[System\.Windows\.Forms\.AnchorStyles\]::Left\s+-bor\s+\[System\.Windows\.Forms\.AnchorStyles\]::Right') { throw 'Log text box should resize with the log group.' }
+    if ($source -notmatch '\$logBox\.ScrollBars\s*=\s*''Both''' -or $source -notmatch '\$logBox\.WordWrap\s*=\s*\$false') { throw 'Log box should keep command output readable with horizontal scrolling.' }
+}
+
 TestCase 'Wait-ServiceReady requires health endpoint success' {
     $func = Get-FunctionAst $Script 'Wait-ServiceReady'
     $body = $func.Body.Extent.Text

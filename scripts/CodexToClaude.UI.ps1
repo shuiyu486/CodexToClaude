@@ -443,10 +443,36 @@ function New-Button([string]$Text, [int]$X, [int]$Y, [int]$W) {
     return $button
 }
 
+function Normalize-LogText([string]$Text) {
+    if ($null -eq $Text) { return '' }
+    return (($Text -replace "`r`n", "`n") -replace "`r", "`n") -replace "`n", [Environment]::NewLine
+}
+
 function Append-Log([string]$Text) {
-    $logBox.AppendText($Text + [Environment]::NewLine)
+    $normalized = Normalize-LogText $Text
+    $logBox.AppendText($normalized + [Environment]::NewLine)
     $logBox.SelectionStart = $logBox.Text.Length
     $logBox.ScrollToCaret()
+}
+
+function Read-NewOutput([string]$Path, [ref]$Position) {
+    if (-not (Test-Path $Path)) { return '' }
+    $stream = $null
+    $reader = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        if ($Position.Value -gt $stream.Length) { $Position.Value = 0 }
+        [void]$stream.Seek([int64]$Position.Value, [System.IO.SeekOrigin]::Begin)
+        $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+        $text = $reader.ReadToEnd()
+        $Position.Value = $stream.Position
+        return $text
+    } catch {
+        return ''
+    } finally {
+        if ($reader) { $reader.Close() }
+        elseif ($stream) { $stream.Close() }
+    }
 }
 
 function Show-Message([string]$MessageKey, [string]$TitleKey) {
@@ -530,14 +556,16 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
         $quotedCli = foreach ($a in @($wrapperPath) + $cliOnly) { if ($a -match '\s') { "`"$a`"" } else { $a } }
         $cmdArgs = @('/c', 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' + ($quotedCli -join ' ') + " > `"$stdout`" 2>&1")
         $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList $cmdArgs -PassThru -WindowStyle Hidden
+        $outputPosition = 0
         while (-not $proc.HasExited) {
+            $newOutput = Read-NewOutput $stdout ([ref]$outputPosition)
+            if ($newOutput) { Append-Log $newOutput.TrimEnd() }
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 200
         }
-        if (Test-Path $stdout) {
-            $out = Get-Content $stdout -Raw -ErrorAction SilentlyContinue
-            if ($out) { Append-Log $out.TrimEnd() }
-        }
+        $newOutput = Read-NewOutput $stdout ([ref]$outputPosition)
+        if ($newOutput) { Append-Log $newOutput.TrimEnd() }
+        Append-Log ""
         Append-Log "ExitCode: $($proc.ExitCode)"
         if ($Command -eq 'login' -or $Command -eq 'install' -or $Command -eq 'configure') { Refresh-AuthStatus }
         return ($proc.ExitCode -eq 0)
@@ -725,6 +753,7 @@ $script:WizardCompleted = [bool]$script:Prefs.firstRunCompleted
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "$(T 'app.title') $(Get-ProjectVersion)"
 $form.Size = New-Object System.Drawing.Size(980, 850)
+$form.MinimumSize = New-Object System.Drawing.Size(980, 850)
 $form.StartPosition = 'CenterScreen'
 $form.SuspendLayout()
 
@@ -994,6 +1023,7 @@ $logGroup = New-Object System.Windows.Forms.GroupBox
 $logGroup.Text = T 'log.title'
 $logGroup.Location = New-Object System.Drawing.Point(16, 655)
 $logGroup.Size = New-Object System.Drawing.Size(930, 165)
+$logGroup.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $logGroup.SuspendLayout()
 Register-Text $logGroup 'log.title'
 $form.Controls.Add($logGroup)
@@ -1001,8 +1031,10 @@ $form.Controls.Add($logGroup)
 $logBox = New-Object System.Windows.Forms.TextBox
 $logBox.Location = New-Object System.Drawing.Point(12, 24)
 $logBox.Size = New-Object System.Drawing.Size(905, 128)
+$logBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $logBox.Multiline = $true
-$logBox.ScrollBars = 'Vertical'
+$logBox.ScrollBars = 'Both'
+$logBox.WordWrap = $false
 $logBox.ReadOnly = $true
 $logBox.Font = New-Object System.Drawing.Font('Consolas', 9)
 $logGroup.Controls.Add($logBox)
