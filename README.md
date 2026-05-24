@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.9-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.10-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -305,7 +305,7 @@ CodexToClaude only forwards headers; rendering usage limits is handled by your s
 
 ## 💭 About thinking output
 
-CodexToClaude filters `reasoning` / `reasoning.effort` from CLIProxyAPI requests by default. This avoids duplicated Chinese characters that can appear in some Codex thinking streams inside the Claude Code TUI. Normal answer text is unaffected.
+CodexToClaude filters `reasoning` / `reasoning.effort` / `thinking` from CLIProxyAPI requests by default. This avoids duplicated Chinese characters and long thinking streams that can appear in some Codex thinking responses inside the Claude Code TUI. Normal answer text is unaffected.
 
 ## 🛡️ Security notes
 

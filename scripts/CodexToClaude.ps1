@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'project-version', 'project-update', 'cliproxy-version', 'cliproxy-update', 'models', 'configure-models', 'help')]
+    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'project-version', 'project-update', 'cliproxy-version', 'cliproxy-update', 'models', 'configure-models', 'watchdog-start', 'watchdog-stop', 'watchdog-run', 'help')]
     [string]$Command = 'help',
 
     # --- Provider selection ---
@@ -22,7 +22,8 @@ param(
     [switch]$Device,
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
-    [switch]$Json
+    [switch]$Json,
+    [int]$WatchdogTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = 'Stop'
@@ -398,6 +399,79 @@ function Wait-ServiceReady([int]$ResolvedPort, [int]$TimeoutSeconds, [string]$He
         Start-Sleep -Milliseconds 500
     }
     return $false
+}
+
+function Get-WatchdogPidPath {
+    return (Join-Path $InstallDir 'codextoclaude-watchdog.pid')
+}
+
+function Get-LongRunningProxyRequests([string]$Path, [int]$TimeoutSeconds, [datetime]$Since = [datetime]::MinValue) {
+    if (-not (Test-Path $Path)) { return @() }
+    $starts = @{}
+    $ends = @{}
+    foreach ($line in (Get-Content $Path -Tail 1000 -ErrorAction SilentlyContinue)) {
+        if ($line -match '^\[(?<ts>[^\]]+)\] \[(?<id>[^\]]+)\].*Use OAuth provider=.* model (?<model>\S+)') {
+            $timestamp = [datetime]::Parse($matches.ts)
+            if ($timestamp -lt $Since) { continue }
+            $starts[$matches.id] = [pscustomobject]@{ Timestamp = $timestamp; Model = $matches.model }
+        } elseif ($line -match '^\[(?<ts>[^\]]+)\] \[(?<id>[^\]]+)\].*\] (?<status>\d{3}) \|\s*(?<duration>[^|]+)\|.*POST\s+"(?<path>[^"]+)"') {
+            $ends[$matches.id] = $true
+        }
+    }
+    $now = Get-Date
+    $items = @()
+    foreach ($id in $starts.Keys) {
+        if (-not $ends.ContainsKey($id)) {
+            $age = [int]($now - $starts[$id].Timestamp).TotalSeconds
+            if ($age -ge $TimeoutSeconds) {
+                $items += [pscustomobject]@{ Id = $id; AgeSeconds = $age; Model = $starts[$id].Model }
+            }
+        }
+    }
+    return $items
+}
+
+function Stop-ProviderWatchdog {
+    $pidPath = Get-WatchdogPidPath
+    if (-not (Test-Path $pidPath)) { return }
+    $watchdogPid = (Get-Content $pidPath -Raw -ErrorAction SilentlyContinue).Trim()
+    if ($watchdogPid -match '^\d+$') {
+        $proc = Get-Process -Id ([int]$watchdogPid) -ErrorAction SilentlyContinue
+        if ($proc.Id -eq $PID) { return }
+        if ($proc) { Stop-Process -Id $proc.Id -Force -Confirm:$false }
+    }
+    Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
+}
+
+function Start-ProviderWatchdog([int]$ResolvedPort) {
+    if ($Provider -ne 'cliproxy') { return }
+    $pidPath = Get-WatchdogPidPath
+    if (Test-Path $pidPath) {
+        $existingPid = (Get-Content $pidPath -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($existingPid -match '^\d+$' -and (Get-Process -Id ([int]$existingPid) -ErrorAction SilentlyContinue)) { return }
+        Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
+    }
+    $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, 'watchdog-run', '-Provider', $Provider, '-Port', $ResolvedPort, '-InstallDir', $InstallDir, '-ClaudeSettingsPath', $ClaudeSettingsPath, '-WatchdogTimeoutSeconds', $WatchdogTimeoutSeconds)
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -WindowStyle Hidden -PassThru
+    Set-Content -Path $pidPath -Value $proc.Id -Encoding ASCII
+}
+
+function Invoke-ProviderWatchdog([int]$ResolvedPort) {
+    $watchStartedAt = Get-Date
+    while ($true) {
+        Start-Sleep -Seconds 5
+        $stale = @(Get-LongRunningProxyRequests $LogPath $WatchdogTimeoutSeconds $watchStartedAt)
+        if ($stale.Count -eq 0) { continue }
+        try {
+            Add-Content -Path (Join-Path $InstallDir 'codextoclaude-watchdog.log') -Value "$(Get-Date -Format s) restarting $($PMeta.Name): stale request $($stale[0].Id) age=$($stale[0].AgeSeconds)s model=$($stale[0].Model)" -Encoding UTF8
+            $stopFunc = "$($PMeta.Prefix)-StopProcess"
+            $startFunc = "$($PMeta.Prefix)-StartProcess"
+            & $stopFunc $ResolvedPort
+            & $startFunc $ResolvedPort
+        } catch {
+            Add-Content -Path (Join-Path $InstallDir 'codextoclaude-watchdog.log') -Value "$(Get-Date -Format s) watchdog recovery failed: $($_.Exception.Message)" -Encoding UTF8
+        }
+    }
 }
 
 function Write-AuthStatus([object]$Status) {
@@ -885,4 +959,17 @@ switch ($Command) {
 
     'models' { Show-ClaudeModels }
     'configure-models' { Configure-ClaudeModels }
+
+    'watchdog-start' {
+        $resolvedPort = Resolve-Port $false
+        Start-ProviderWatchdog $resolvedPort
+    }
+
+    'watchdog-stop' { Stop-ProviderWatchdog }
+
+    'watchdog-run' {
+        if ($Provider -ne 'cliproxy') { throw 'watchdog-run is only supported for CLIProxyAPI.' }
+        $resolvedPort = Resolve-Port $false
+        Invoke-ProviderWatchdog $resolvedPort
+    }
 }

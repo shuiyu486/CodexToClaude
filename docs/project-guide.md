@@ -132,19 +132,22 @@ payload:
       params:
         - "reasoning"
         - "reasoning.effort"
+        - "thinking"
 ```
 
 `passthrough-headers: true` 用于把上游 `X-Codex-*` / rate-limit headers 透传给 Claude Code 或状态栏插件，供用量限制显示和调试使用。
 
-原因：Claude Code TUI 显示 Codex thinking 流时，中文片段可能重复字符；过滤 reasoning 后正常回答文本不受影响。
+原因：Claude Code TUI 显示 Codex thinking 流时，中文片段可能重复字符，且 `gpt-5.5` 的长 thinking 流可能让主 agent 迟迟不返回；过滤 reasoning/thinking 后正常回答文本不受影响。
 
 ## 主 agent 卡住防护
 
-`start` 和 `restart` 必须把 provider readiness 定义为 health endpoint 成功响应，而不是仅有 TCP 端口监听。`verify` 和 `doctor` 遇到可恢复的本地代理或 stream-json 探测失败时，可以自动重启当前 provider 一次并重试；`status` 必须保持只读，不得 start、stop、restart、重写 config 或切换代理模式。
+`start` 和 `restart` 必须把 provider readiness 定义为 health endpoint 成功响应，而不是仅有 TCP 端口监听。CLIProxy 启动后必须同时启动 CodexToClaude watchdog；`stop` 必须关闭 watchdog。watchdog 监控启动后的新 `/v1/messages` 长请求，默认 60 秒仍未完成时自动重启当前 CLIProxy provider，等价于用户手动点 GUI 重启；高级用户可通过 `-WatchdogTimeoutSeconds` 调整阈值。
+
+`verify` 和 `doctor` 遇到可恢复的本地代理或 stream-json 探测失败时，可以自动重启当前 provider 一次并重试；`status` 必须保持只读，不得 start、stop、restart、重写 config 或切换代理模式。
 
 Claude Code `stream-json` 检查必须有 60 秒 watchdog。若 `claude.exe` 探测在该窗口内不退出，脚本应终止该探测进程并报告 stream timeout，避免诊断命令自身无限挂起。
 
-CLIProxy 诊断需要保持 bounded-retry 默认值可见：`request-retry: 1`、`max-retry-credentials: 1`、`max-retry-interval: 5`、`streaming.bootstrap-retries: 1`、`quota-exceeded.antigravity-credits: false`。输出日志片段前必须脱敏，不能包含 OAuth token、API key、bearer token 或完整 auth JSON。
+CLIProxy 诊断需要保持 bounded-retry 默认值可见：`request-retry: 1`、`max-retry-credentials: 1`、`max-retry-interval: 5`、`streaming.bootstrap-retries: 1`、`quota-exceeded.antigravity-credits: false`，并确认 `payload.filter` 覆盖 `reasoning`、`reasoning.effort` 和 `thinking`。输出日志片段前必须脱敏，不能包含 OAuth token、API key、bearer token 或完整 auth JSON。
 
 `config.json`（oc-go-cc）写入位置：
 
@@ -208,7 +211,7 @@ CLIProxy 诊断需要保持 bounded-retry 默认值可见：`request-retry: 1`�
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL`
 - `ANTHROPIC_DEFAULT_OPUS_MODEL_NAME`
 - `ANTHROPIC_DEFAULT_SONNET_MODEL_NAME`
-- `CLAUDE_CODE_EFFORT_LEVEL`（OCC 后端设为 `"max"`；CLIProxy 后端移除此键以配合 payload.filter 过滤 reasoning 参数）（OCC 后端设为 `"max"`；CLIProxy 后端移除此键以配合 payload.filter 过滤 reasoning 参数）
+- `CLAUDE_CODE_EFFORT_LEVEL`（OCC 后端设为 `"max"`；CLIProxy 后端移除此键以配合 payload.filter 过滤 reasoning/thinking 参数）
 
 保留 `statusLine`、`permissions`、`language` 等其它字段。
 

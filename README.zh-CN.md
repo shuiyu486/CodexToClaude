@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.8-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.10-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -304,7 +304,7 @@ CodexToClaude 只负责透传 headers，不负责状态栏渲染。
 
 ## 💭 关于 thinking 输出
 
-CodexToClaude 默认会过滤 CLIProxyAPI 请求中的 `reasoning` / `reasoning.effort` 参数，用来规避 Claude Code TUI 在部分 Codex thinking 流中出现中文重复字符的问题。正常回答文本不受影响。
+CodexToClaude 默认会过滤 CLIProxyAPI 请求中的 `reasoning` / `reasoning.effort` / `thinking` 参数，用来规避 Claude Code TUI 在部分 Codex thinking 流中出现中文重复字符或长时间 thinking 流的问题。正常回答文本不受影响。
 
 ## 🛡️ 安全提醒
 

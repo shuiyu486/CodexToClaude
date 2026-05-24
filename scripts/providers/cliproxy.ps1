@@ -151,6 +151,7 @@ payload:
       params:
         - "reasoning"
         - "reasoning.effort"
+        - "thinking"
 "@
     Write-FileUtf8NoBom $ConfigPath $content
     CLIProxy-SyncAuthProxyUrl $ResolvedProxyUrl
@@ -191,8 +192,8 @@ function CLIProxy-GetRiskDiagnostics {
         $items += [pscustomobject]@{ Level = 'warn'; Message = 'quota-exceeded.antigravity-credits should be false to avoid unexpected fallback paths.' }
     }
 
-    if ($raw -notmatch 'payload:\s*[\s\S]*filter:' -or $raw -notmatch 'reasoning\.effort' -or $raw -notmatch '(?m)^\s*-\s*"reasoning"\s*$') {
-        $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter should remove reasoning and reasoning.effort for Codex models.' }
+    if ($raw -notmatch 'payload:\s*[\s\S]*filter:' -or $raw -notmatch 'reasoning\.effort' -or $raw -notmatch '(?m)^\s*-\s*"reasoning"\s*$' -or $raw -notmatch '(?m)^\s*-\s*"thinking"\s*$') {
+        $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter should remove reasoning, reasoning.effort, and thinking for Codex models.' }
     }
 
     $configProxy = Read-ConfigProxyUrl
@@ -310,6 +311,7 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
         $health = Test-ServiceHealth $ResolvedPort '/healthz' 2
         if ($health.Healthy) {
             Write-OK "Port $ResolvedPort is already listening and healthy."
+            Start-ProviderWatchdog $ResolvedPort
             return
         }
         $tail = Get-SafeLogTail $LogPath 30
@@ -342,6 +344,7 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
             throw "CLIProxyAPI did not become ready on port $ResolvedPort.`n$tail"
         }
         Write-OK "Started cli-proxy-api pid=$($proc.Id)"
+        Start-ProviderWatchdog $ResolvedPort
     } finally {
         Remove-Item $stderr -Force -ErrorAction SilentlyContinue
         $env:HTTPS_PROXY = $prevHttpsProxy
@@ -351,6 +354,7 @@ function CLIProxy-StartProcess([int]$ResolvedPort) {
 
 function CLIProxy-StopProcess([int]$ResolvedPort) {
     Write-Step "Stopping CLIProxyAPI on port $ResolvedPort"
+    Stop-ProviderWatchdog
     $procs = Get-PortProcesses $ResolvedPort
     if ($procs.Count -eq 0) {
         Write-OK 'No process is listening on the target port.'

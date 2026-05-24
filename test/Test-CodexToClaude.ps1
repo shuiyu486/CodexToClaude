@@ -121,7 +121,7 @@ TestCase 'Provider start validates health for existing listeners' {
 TestCase 'CLIProxy risk diagnostics checks hang-prone configuration' {
     $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
     if ($clip -notmatch 'function\s+CLIProxy-GetRiskDiagnostics') { throw 'CLIProxy-GetRiskDiagnostics missing.' }
-    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits', 'payload.filter', 'reasoning.effort')) {
+    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits', 'payload.filter', 'reasoning.effort', 'thinking')) {
         if ($clip -notmatch [regex]::Escape($field)) { throw "CLIProxy risk diagnostics missing check for $field" }
     }
 }
@@ -132,6 +132,20 @@ TestCase 'Verify uses a single restart recovery attempt' {
     if ($source -notmatch 'function\s+Invoke-VerifyWithRecovery') { throw 'Invoke-VerifyWithRecovery function missing.' }
     if ($source -notmatch '\$recoveryAttempted\s*=\s*\$false') { throw 'Verify recovery must track a single attempt.' }
     if ($source -notmatch 'Attempting one restart recovery before retrying verify') { throw 'Verify recovery message missing.' }
+}
+
+TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
+    foreach ($name in @('Get-LongRunningProxyRequests', 'Invoke-ProviderWatchdog', 'Start-ProviderWatchdog', 'Stop-ProviderWatchdog')) {
+        if ($source -notmatch "function\s+$name") { throw "$name function missing." }
+    }
+    foreach ($cmd in @('watchdog-run', 'watchdog-start', 'watchdog-stop')) {
+        if ($source -notmatch [regex]::Escape("'$cmd'")) { throw "Command missing: $cmd" }
+    }
+    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*60') { throw 'Watchdog timeout should be 60 seconds.' }
+    if ($clip -notmatch 'Start-ProviderWatchdog\s+\$ResolvedPort') { throw 'CLIProxy start should start watchdog.' }
+    if ($clip -notmatch 'Stop-ProviderWatchdog') { throw 'CLIProxy stop should stop watchdog.' }
 }
 
 TestCase 'Project VERSION file exists and is semantic' {
@@ -163,6 +177,7 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($config -notmatch '(?m)^request-retry:\s*1\r?$') { throw 'CLIProxy request retry should be bounded.' }
         if ($config -notmatch '(?m)^max-retry-credentials:\s*1\r?$') { throw 'CLIProxy credential retry should be bounded.' }
         if ($config -notmatch '(?m)^\s*antigravity-credits:\s*false\r?$') { throw 'CLIProxy should not fall back to Antigravity credits by default.' }
+        if ($config -notmatch '(?m)^\s*-\s*"thinking"\s*$') { throw 'CLIProxy should filter Claude thinking requests for Codex models.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-5.5') { throw 'Default Opus model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-5.4') { throw 'Default Sonnet model name mismatch.' }
     } finally {
