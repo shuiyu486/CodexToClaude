@@ -151,6 +151,7 @@ TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
     }
     if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*30') { throw 'Watchdog timeout should be 30 seconds.' }
     if ($source -notmatch '\$watchStartedAt\s*=\s*Get-Date[\s\S]*catch') { throw 'Watchdog should reset its observation window after recovery.' }
+    if ($source -match 'recent 5xx failures') { throw 'Watchdog should not restart the provider for fast 5xx responses.' }
     if ($clip -notmatch 'Start-ProviderWatchdog\s+\$ResolvedPort') { throw 'CLIProxy start should start watchdog.' }
     if ($clip -notmatch 'Stop-ProviderWatchdog') { throw 'CLIProxy stop should stop watchdog.' }
 }
@@ -183,6 +184,8 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($config -match '(?m)^proxy-url:') { throw 'proxy-url should be omitted for none.' }
         $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18317') { throw 'Claude base URL mismatch.' }
+        if ($settings.env.NO_PROXY -notmatch '127\.0\.0\.1' -or $settings.env.NO_PROXY -notmatch 'localhost' -or $settings.env.NO_PROXY -notmatch '127\.0\.0\.1:18317') { throw 'Claude settings should bypass proxies for the local provider URL.' }
+        if ($settings.env.no_proxy -ne $settings.env.NO_PROXY) { throw 'Claude settings should write both NO_PROXY and no_proxy.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }

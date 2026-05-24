@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.12-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.13-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -42,7 +42,8 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 📊 **状态栏用量显示** — 推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
 - 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在 HTTP 超时后尝试 SOCKS5。
 - 🧪 **端到端验证** — 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
-- 🛟 **卡住恢复 watchdog** — 新的 `/v1/messages` 请求超过 30 秒仍未完成时自动重启 CLIProxyAPI，避免 Claude Code 卡住数分钟。
+- 🛟 **卡住恢复 watchdog** — 新的 `/v1/messages` 请求超过 30 秒仍未完成时自动重启 CLIProxyAPI；快速 5xx 交给 Claude Code 自身重试，避免切断正在进行的流式响应。
+- 🧭 **本地代理绕过** — 自动为本地 provider URL 写入 `NO_PROXY` / `no_proxy`，避免 Claude Code 把 `127.0.0.1:<Port>` 请求送进系统代理。
 - 📦 **版本管理** — GUI 和 CLI 都能查看/更新项目与后端二进制。
 - 🔐 **安全默认值** — OAuth JSON、token、API key、日志均被 `.gitignore` 排除，脚本不会打印真实密钥。
 
@@ -286,6 +287,7 @@ CodexToClaude/
 | Codex 登录失败 | 检查代理；重新运行 `install/configure`；尝试 `login -Device`；查看 `cli-proxy-api\logs\main.log`。 |
 | OpenCode Go 提示没有 API Key | 设置环境变量 `OC_GO_CC_API_KEY`，或在 GUI 的 API Key 输入框填写后点击 `配置`。 |
 | `verify` 超时或 TLS 错误 | `ProxyMode Auto` 会尝试从 HTTP 切换到 SOCKS5；如果多次 `/v1/messages?beta=true` 仍超时，建议显式使用 `Socks5` 并保持 watchdog 开启。 |
+| Claude Code 报 socket closed 或本地代理 502 | 重新执行 `配置`，确保 `NO_PROXY` / `no_proxy` 包含 `127.0.0.1:<Port>`，然后重启 Claude Code。快速上游 5xx 交给 Claude Code 自身重试；watchdog 只处理长时间卡住请求。 |
 | Claude Code 仍访问旧模型 | 先点 `配置`，再点 `重启`，然后重启 Claude Code 客户端。 |
 | 端口被占用 | 换一个端口，并重新执行 `配置` + `重启` + `验证`。 |
 

@@ -527,6 +527,9 @@ function Configure-Claude([int]$ResolvedPort) {
     }
     Set-JsonProperty $settings.env 'ANTHROPIC_AUTH_TOKEN' $ApiKey
     Set-JsonProperty $settings.env 'ANTHROPIC_BASE_URL' "http://127.0.0.1:$ResolvedPort"
+    $noProxy = "127.0.0.1,localhost,::1,127.0.0.1:$ResolvedPort,localhost:$ResolvedPort"
+    Set-JsonProperty $settings.env 'NO_PROXY' $noProxy
+    Set-JsonProperty $settings.env 'no_proxy' $noProxy
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL' $OpusModel
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL' $SonnetModel
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
