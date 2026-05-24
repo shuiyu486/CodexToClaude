@@ -68,7 +68,7 @@ function CLIProxy-InstallAsset([string]$DownloadUrl, [string]$AssetName, [string
 
 function CLIProxy-InstallBinary {
     if (Test-Path $ExePath) {
-        Write-OK "cli-proxy-api.exe exists: $ExePath"
+        CLIProxy-UpdateBinary
         return
     }
     Write-Step 'Downloading CLIProxyAPI latest release'

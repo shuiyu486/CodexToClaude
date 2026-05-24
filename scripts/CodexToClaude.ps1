@@ -858,10 +858,10 @@ switch ($Command) {
         Ensure-InstallDir
         $resolvedPort = Resolve-Port $true
         $resolvedProxy = Resolve-ProxyUrl $true
-        $installFunc = "$($PMeta.Prefix)-InstallBinary"
-        & $installFunc
         $writeFunc = "$($PMeta.Prefix)-WriteConfig"
         & $writeFunc $resolvedPort $resolvedProxy
+        $installFunc = "$($PMeta.Prefix)-InstallBinary"
+        & $installFunc
         Write-OK 'Install/config step complete. Run login, configure, restart, verify next.'
     }
 
