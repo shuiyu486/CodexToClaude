@@ -152,7 +152,7 @@ Click these steps in order:
 Install Codex proxy -> Login to Codex -> Configure Claude Code -> Restart local service -> Verify end-to-end
 ```
 
-Login opens a browser. If browser login is inconvenient, enable `Use device login` before clicking `Login`.
+Login opens a browser. If browser login is inconvenient, enable `Use device login` before clicking `Login`; the device code and verification URL are streamed into the GUI log while the login process waits.
 
 #### OpenCode Go backend
 

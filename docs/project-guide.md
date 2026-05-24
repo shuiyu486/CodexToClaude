@@ -68,6 +68,8 @@ CodexToClaude/
 - `ProxyUrl` 直连必须显式输入 `none/direct` 或选择 `Direct`。
 - GUI 启动和登录后都要刷新 `Login status`。
 - 登录状态以 `auth-status -Json` 为唯一真源。
+- GUI 执行 CLI 命令时必须在进程运行期间增量显示 stdout/stderr；设备码登录会等待用户授权，不能等进程退出后才读取输出。
+- GUI 日志框必须随主窗口横向和纵向拉伸，保留命令输出换行和长行横向滚动，避免诊断日志挤在小区域或显示成一团。
 
 ## GUI 语言与首次向导维护约定
 
