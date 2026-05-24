@@ -162,6 +162,28 @@ TestCase 'CLIProxy update replaces existing exe safely' {
     if ($clip -notmatch 'Restored previous cli-proxy-api\.exe after update failure') { throw 'CLIProxy update should restore backup after replacement failure.' }
 }
 
+TestCase 'CLIProxy install refreshes existing exe from latest release' {
+    $func = Get-FunctionAst (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') 'CLIProxy-InstallBinary'
+    $body = $func.Body.Extent.Text
+    if ($body -match 'if\s*\(Test-Path\s+\$ExePath\)\s*\{[\s\S]{0,160}cli-proxy-api\.exe exists[\s\S]{0,80}return') {
+        throw 'CLIProxy install must not skip update checks when cli-proxy-api.exe already exists.'
+    }
+    if ($body -notmatch 'CLIProxy-UpdateBinary') {
+        throw 'CLIProxy install should use the safe update flow when an exe exists.'
+    }
+}
+
+TestCase 'Install writes provider config before binary update can restart service' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    $installMatch = [regex]::Match($source, "'install'\s*\{(?<body>[\s\S]*?)\r?\n\s*\}\r?\n\r?\n\s*'login'")
+    if (-not $installMatch.Success) { throw 'Could not locate install command dispatch.' }
+    $body = $installMatch.Groups['body'].Value
+    $writeIndex = $body.IndexOf('& $writeFunc $resolvedPort $resolvedProxy')
+    $installIndex = $body.IndexOf('& $installFunc')
+    if ($writeIndex -lt 0 -or $installIndex -lt 0) { throw 'Install dispatch should call both provider WriteConfig and InstallBinary.' }
+    if ($writeIndex -gt $installIndex) { throw 'Install must write config before updating an existing binary, because update may restart the service.' }
+}
+
 TestCase 'Project VERSION file exists and is semantic' {
     if (-not (Test-Path $VersionFile)) { throw 'VERSION file missing.' }
     $version = (Get-Content $VersionFile -Raw -Encoding UTF8).Trim()
