@@ -143,13 +143,25 @@ TestCase 'Verify uses a single restart recovery attempt' {
 TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
     $source = Get-Content $Script -Raw -Encoding UTF8
     $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
-    foreach ($name in @('Get-LongRunningProxyRequests', 'Invoke-ProviderWatchdog', 'Start-ProviderWatchdog', 'Stop-ProviderWatchdog')) {
+    foreach ($name in @('Get-LongRunningProxyRequests', 'Invoke-ProviderWatchdog', 'Start-ProviderWatchdog', 'Stop-ProviderWatchdog', 'Get-WatchdogProcess', 'Quote-ProcessArgument', 'Get-AutoProxyToggle', 'Add-AutoProxyStaleEvent', 'Get-AutoProxyPinnedScheme')) {
         if ($source -notmatch "function\s+$name") { throw "$name function missing." }
     }
     foreach ($cmd in @('watchdog-run', 'watchdog-start', 'watchdog-stop')) {
         if ($source -notmatch [regex]::Escape("'$cmd'")) { throw "Command missing: $cmd" }
     }
-    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*30') { throw 'Watchdog timeout should be 30 seconds.' }
+    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*60') { throw 'Watchdog timeout should be 60 seconds.' }
+    if ($source -notmatch '\$script:AutoProxyDecisionWindowSeconds\s*=\s*600') { throw 'Auto proxy decision window should be 10 minutes.' }
+    if ($source -notmatch '\$script:AutoProxyDecisionMinEvents\s*=\s*3') { throw 'Auto proxy decision should require multiple stale events.' }
+    if ($source -notmatch '\$script:AutoProxyPinSeconds\s*=\s*1800') { throw 'Auto proxy pin duration should be 30 minutes.' }
+    if ($source -notmatch 'function\s+Get-EffectiveProxyMode') { throw 'ProxyMode should be persisted for watchdog subprocesses.' }
+    if ($source -match "'watchdog-run'[\s\S]{0,240}'-ProxyMode'") { throw 'Watchdog subprocess should not pin ProxyMode; it should read persisted mode at runtime.' }
+    if ($source -notmatch '\(Get-EffectiveProxyMode\)\s+-ne\s+''Auto''') { throw 'Watchdog auto proxy decisions must only apply in effective Auto mode.' }
+    if ($source -notmatch '\[datetime\]::TryParse') { throw 'Watchdog should ignore malformed matching log timestamps.' }
+    if ($source -notmatch 'Get-CimInstance\s+Win32_Process') { throw 'Watchdog PID handling should validate process identity.' }
+    if ($source -notmatch 'codextoclaude-watchdog-state\.json') { throw 'Watchdog should persist Auto proxy decision state.' }
+    if ($source -notmatch 'codextoclaude-proxy-mode\.txt') { throw 'ProxyMode should be persisted beside provider config.' }
+    if ($source -notmatch 'auto-switched proxy' -or $source -notmatch 'auto-kept proxy') { throw 'Watchdog should log switched and kept Auto proxy decisions.' }
+    if ($source -notmatch 'Convert-ProxyUrlScheme\s+\$currentProxy\s+\$nextScheme') { throw 'Watchdog should toggle between HTTP and Socks5 proxy schemes.' }
     if ($source -notmatch '\$watchStartedAt\s*=\s*Get-Date[\s\S]*catch') { throw 'Watchdog should reset its observation window after recovery.' }
     if ($source -match 'recent 5xx failures') { throw 'Watchdog should not restart the provider for fast 5xx responses.' }
     if ($clip -notmatch 'Start-ProviderWatchdog\s+\$ResolvedPort') { throw 'CLIProxy start should start watchdog.' }
@@ -246,6 +258,8 @@ TestCase 'ProxyMode Auto accepts host port and writes HTTP proxy-url' {
         & $Script configure -Port 18320 -ProxyMode Auto -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
         $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
         if ($config -notmatch 'proxy-url: "http://127\.0\.0\.1:7897"') { throw 'Auto mode should default host:port to HTTP proxy-url.' }
+        $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
+        if ($mode -ne 'Auto') { throw 'Auto mode should be persisted for watchdog subprocesses.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -260,6 +274,8 @@ TestCase 'ProxyMode Socks5 writes socks5 proxy-url' {
         & $Script configure -Port 18321 -ProxyMode Socks5 -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
         $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
         if ($config -notmatch 'proxy-url: "socks5://127\.0\.0\.1:7897"') { throw 'Socks5 mode should write socks5 proxy-url.' }
+        $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
+        if ($mode -ne 'Socks5') { throw 'Socks5 mode should be persisted for watchdog subprocesses.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -278,6 +294,77 @@ TestCase 'ProxyMode Direct removes CLIProxy auth proxy_url' {
         if ($config -match '(?m)^proxy-url:') { throw 'Direct mode should omit proxy-url.' }
         $updated = Get-Content (Join-Path $installDir 'codex-user.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($updated.PSObject.Properties['proxy_url']) { throw 'Direct mode should remove auth proxy_url.' }
+        $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
+        if ($mode -ne 'Direct') { throw 'Direct mode should be persisted for watchdog subprocesses.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'ProxyMode reuses configured target with explicit scheme' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-mode-reuse"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18323 -ProxyMode Auto -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        & $Script configure -Port 18323 -ProxyMode Socks5 -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch 'proxy-url: "socks5://127\.0\.0\.1:7897"') { throw 'Socks5 mode should rewrite reused config target to socks5.' }
+        & $Script configure -Port 18323 -ProxyMode Http -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch 'proxy-url: "http://127\.0\.0\.1:7897"') { throw 'Http mode should rewrite reused config target to http.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'Persisted Direct mode is reused without ProxyUrl' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-direct-reuse"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18324 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        & $Script configure -Port 18324 -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -match '(?m)^proxy-url:') { throw 'Persisted Direct mode should be reused when ProxyMode is omitted.' }
+        $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
+        if ($mode -ne 'Direct') { throw 'Persisted Direct mode should remain Direct.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'Explicit ProxyUrl exits persisted Direct mode' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-direct-to-proxy"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18325 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        & $Script configure -Port 18325 -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch 'proxy-url: "http://127\.0\.0\.1:7897"') { throw 'Explicit ProxyUrl should not be ignored after Direct mode.' }
+        $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
+        if ($mode -ne 'Auto') { throw 'Explicit ProxyUrl without ProxyMode should return to Auto mode.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'Explicit direct ProxyUrl keeps Direct mode' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-direct-sentinel"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18326 -ProxyMode Auto -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        & $Script configure -Port 18326 -ProxyUrl 'none' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -match '(?m)^proxy-url:') { throw 'Explicit direct ProxyUrl should omit proxy-url.' }
+        $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
+        if ($mode -ne 'Direct') { throw 'Explicit direct ProxyUrl should persist Direct mode.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

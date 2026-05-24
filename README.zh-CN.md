@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.14-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.15-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -40,9 +40,9 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🔀 **双模型来源** — Codex / OpenCode Go 一键切换，不复制业务逻辑。
 - 🧩 **自动配置 Claude Code** — 只合并更新 `~/.claude/settings.json` 的目标 `env`，保留 statusLine、permissions、language 等设置。
 - 📊 **状态栏用量显示** — 推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
-- 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在 HTTP 超时后尝试 SOCKS5。
+- 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在超时类故障后在 HTTP 和 SOCKS5 之间切换。
 - 🧪 **端到端验证** — 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
-- 🛟 **卡住恢复 watchdog** — 新的 `/v1/messages` 请求超过 30 秒仍未完成时自动重启 CLIProxyAPI；快速 5xx 交给 Claude Code 自身重试，避免切断正在进行的流式响应。
+- 🛟 **卡住恢复 watchdog** — `/v1/messages` 请求超过 60 秒仍未完成时自动重启 CLIProxyAPI；`Auto` 模式会统计近期 HTTP/SOCKS5 卡住次数，并临时固定到更少卡住的一侧。
 - 🧭 **本地代理绕过** — 自动为本地 provider URL 写入 `NO_PROXY` / `no_proxy`，避免 Claude Code 把 `127.0.0.1:<Port>` 请求送进系统代理。
 - 📦 **版本管理** — GUI 和 CLI 都能查看/更新项目与后端二进制。
 - 🔐 **安全默认值** — OAuth JSON、token、API key、日志均被 `.gitignore` 排除，脚本不会打印真实密钥。

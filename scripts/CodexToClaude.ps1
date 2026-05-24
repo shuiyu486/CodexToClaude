@@ -23,12 +23,13 @@ param(
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
     [switch]$Json,
-    [int]$WatchdogTimeoutSeconds = 30
+    [int]$WatchdogTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ProxyUrlProvided = $PSBoundParameters.ContainsKey('ProxyUrl')
+$ProxyModeProvided = $PSBoundParameters.ContainsKey('ProxyMode')
 
 # ============================================================
 # Provider metadata & path initialization
@@ -66,6 +67,9 @@ if (-not $InstallDirProvided) {
 $ExePath = Join-Path $InstallDir $PMeta.ExeName
 $ConfigPath = Join-Path $InstallDir $PMeta.ConfigFile
 $LogPath = Join-Path $InstallDir 'logs\main.log'
+$script:AutoProxyDecisionWindowSeconds = 600
+$script:AutoProxyDecisionMinEvents = 3
+$script:AutoProxyPinSeconds = 1800
 
 # Default models per provider
 $script:DefaultModels = @{
@@ -203,7 +207,7 @@ function Show-Help {
     Write-Host ''
     Write-Host 'Required setup values:' -ForegroundColor Yellow
     Write-Host '  -Port       Local proxy listen port. Claude Code uses http://127.0.0.1:<Port>.'
-    Write-Host '  -ProxyMode  Auto|Http|Socks5|Direct. Auto starts with HTTP and verify can switch to SOCKS5 on timeout.'
+    Write-Host '  -ProxyMode  Auto|Http|Socks5|Direct. Auto can switch between HTTP and SOCKS5 on timeout-style failures.'
     Write-Host '  -ProxyUrl   Upstream proxy for API access. Example: 127.0.0.1:7897, http://127.0.0.1:7897, or socks5://127.0.0.1:7897'
     Write-Host '              If your network can access upstream directly, explicitly use: -ProxyMode Direct or -ProxyUrl none'
     Write-Host ''
@@ -254,11 +258,142 @@ function Convert-ProxyUrlScheme([string]$Value, [string]$Scheme) {
     return "${Scheme}://$(Get-ProxyTarget $Value)"
 }
 
+function Get-ProxyScheme([string]$Value) {
+    if ($Value -match '^socks5://') { return 'socks5' }
+    if ($Value -match '^https?://') { return 'http' }
+    return $null
+}
+
+function Test-DirectProxyUrl([string]$Value) {
+    if ($null -eq $Value) { return $false }
+    return ($Value.Trim() -in @('none', 'direct', 'no', 'off', 'false'))
+}
+
+function Get-ProxyModeStatePath {
+    return (Join-Path $InstallDir 'codextoclaude-proxy-mode.txt')
+}
+
+function Save-ProxyModeState([string]$ResolvedProxyUrl) {
+    $mode = Get-EffectiveProxyMode
+    if ($ResolvedProxyUrl -eq '') { $mode = 'Direct' }
+    Write-FileUtf8NoBom (Get-ProxyModeStatePath) ($mode + "`n")
+}
+
+function Get-PersistedProxyMode {
+    $path = Get-ProxyModeStatePath
+    if (Test-Path $path) {
+        $mode = (Get-Content $path -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($mode -in @('Auto', 'Http', 'Socks5', 'Direct')) { return $mode }
+    }
+    return $null
+}
+
+function Get-EffectiveProxyMode {
+    if ($ProxyModeProvided) { return $ProxyMode }
+    if ($ProxyUrlProvided -and -not (Test-DirectProxyUrl $ProxyUrl)) { return $ProxyMode }
+    $persisted = Get-PersistedProxyMode
+    if ($persisted) { return $persisted }
+    return $ProxyMode
+}
+
+function Get-AutoProxyStatePath {
+    return (Join-Path $InstallDir 'codextoclaude-watchdog-state.json')
+}
+
+function Get-EmptyAutoProxyState {
+    return [pscustomobject]@{ Events = @(); PinnedScheme = $null; PinnedUntil = $null }
+}
+
+function Read-AutoProxyState {
+    $path = Get-AutoProxyStatePath
+    if (-not (Test-Path $path)) { return Get-EmptyAutoProxyState }
+    try {
+        $state = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $state.PSObject.Properties['Events']) { $state | Add-Member -NotePropertyName Events -NotePropertyValue @() }
+        if (-not $state.PSObject.Properties['PinnedScheme']) { $state | Add-Member -NotePropertyName PinnedScheme -NotePropertyValue $null }
+        if (-not $state.PSObject.Properties['PinnedUntil']) { $state | Add-Member -NotePropertyName PinnedUntil -NotePropertyValue $null }
+        $state.Events = @($state.Events)
+        return $state
+    } catch {
+        return Get-EmptyAutoProxyState
+    }
+}
+
+function Write-AutoProxyState($State) {
+    Write-FileUtf8NoBom (Get-AutoProxyStatePath) ((ConvertTo-JsonIndent2 $State 10) + "`n")
+}
+
+function Add-AutoProxyStaleEvent($State, [string]$Scheme) {
+    $now = Get-Date
+    $cutoff = $now.AddSeconds(-$script:AutoProxyDecisionWindowSeconds)
+    $events = @()
+    foreach ($event in @($State.Events)) {
+        try {
+            $timestamp = [datetime]::Parse($event.Timestamp)
+            if ($timestamp -ge $cutoff) { $events += $event }
+        } catch { }
+    }
+    $events += [pscustomobject]@{ Timestamp = $now.ToString('o'); Scheme = $Scheme }
+    $State.Events = $events
+    return $State
+}
+
+function Get-AutoProxyEventCounts($State) {
+    $http = 0
+    $socks5 = 0
+    foreach ($event in @($State.Events)) {
+        if ($event.Scheme -eq 'http') { $http++ }
+        elseif ($event.Scheme -eq 'socks5') { $socks5++ }
+    }
+    return [pscustomobject]@{ Http = $http; Socks5 = $socks5; Total = ($http + $socks5) }
+}
+
+function Get-AutoProxyPinnedScheme($State) {
+    if (-not $State.PinnedScheme -or -not $State.PinnedUntil) { return $null }
+    try {
+        if ([datetime]::Parse($State.PinnedUntil) -gt (Get-Date)) { return $State.PinnedScheme }
+    } catch { }
+    return $null
+}
+
+function Get-AutoProxyToggle {
+    if ((Get-EffectiveProxyMode) -ne 'Auto') { return $null }
+    $currentProxy = Get-ConfigValue 'proxy-url'
+    $currentScheme = Get-ProxyScheme $currentProxy
+    if (-not $currentScheme) { return $null }
+
+    $state = Add-AutoProxyStaleEvent (Read-AutoProxyState) $currentScheme
+    $pinnedScheme = Get-AutoProxyPinnedScheme $state
+    $reason = 'toggle'
+    if (-not $pinnedScheme) {
+        $counts = Get-AutoProxyEventCounts $state
+        if ($counts.Total -ge $script:AutoProxyDecisionMinEvents -and $counts.Http -gt 0 -and $counts.Socks5 -gt 0 -and $counts.Http -ne $counts.Socks5) {
+            if ($counts.Http -lt $counts.Socks5) { $pinnedScheme = 'http' }
+            else { $pinnedScheme = 'socks5' }
+            $state.PinnedScheme = $pinnedScheme
+            $state.PinnedUntil = (Get-Date).AddSeconds($script:AutoProxyPinSeconds).ToString('o')
+            $reason = "pin http=$($counts.Http) socks5=$($counts.Socks5)"
+        }
+    } else {
+        $reason = "pinned until $($state.PinnedUntil)"
+    }
+    Write-AutoProxyState $state
+
+    if ($pinnedScheme) { $nextScheme = $pinnedScheme }
+    elseif ($currentScheme -eq 'http') { $nextScheme = 'socks5' }
+    else { $nextScheme = 'http' }
+    if ($nextScheme -eq $currentScheme) {
+        return [pscustomobject]@{ Current = $currentProxy; Next = $currentProxy; Reason = $reason; Changed = $false }
+    }
+    return [pscustomobject]@{ Current = $currentProxy; Next = (Convert-ProxyUrlScheme $currentProxy $nextScheme); Reason = $reason; Changed = $true }
+}
+
 function Resolve-ProxyUrl([bool]$RequirePrompt) {
-    if ($ProxyMode -eq 'Direct') { return '' }
-    if ($ProxyUrlProvided) { return Normalize-ProxyUrl $ProxyUrl $ProxyMode }
+    $effectiveMode = Get-EffectiveProxyMode
+    if ($effectiveMode -eq 'Direct') { return '' }
+    if ($ProxyUrlProvided) { return Normalize-ProxyUrl $ProxyUrl $effectiveMode }
     $fromConfig = Get-ConfigValue 'proxy-url'
-    if ($null -ne $fromConfig) { return Normalize-ProxyUrl $fromConfig 'Auto' }
+    if ($null -ne $fromConfig) { return Normalize-ProxyUrl $fromConfig $effectiveMode }
     if (-not $RequirePrompt) {
         throw 'Missing proxy-url. Run configure/install with -ProxyUrl first, or use -ProxyMode Direct for direct access.'
     }
@@ -269,7 +404,7 @@ function Resolve-ProxyUrl([bool]$RequirePrompt) {
         Write-Host 'If direct access works, enter none. Do not leave it blank.' -ForegroundColor Gray
         $inputProxy = Read-Host 'Enter ProxyUrl'
         try {
-            $normalized = Normalize-ProxyUrl $inputProxy $ProxyMode
+            $normalized = Normalize-ProxyUrl $inputProxy $effectiveMode
             if ($null -ne $normalized) { return $normalized }
             Write-Warn 'ProxyUrl cannot be blank. Use none for direct access.'
         } catch {
@@ -406,13 +541,29 @@ function Get-WatchdogPidPath {
     return (Join-Path $InstallDir 'codextoclaude-watchdog.pid')
 }
 
+function Quote-ProcessArgument([string]$Value) {
+    if ($null -eq $Value) { return '""' }
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
+function Get-WatchdogProcess([string]$WatchdogPid) {
+    if ($WatchdogPid -notmatch '^\d+$') { return $null }
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$WatchdogPid" -ErrorAction SilentlyContinue
+    if (-not $proc) { return $null }
+    if ($proc.CommandLine -notmatch [regex]::Escape($PSCommandPath)) { return $null }
+    if ($proc.CommandLine -notmatch 'watchdog-run') { return $null }
+    if ($proc.CommandLine -notmatch [regex]::Escape($InstallDir)) { return $null }
+    return $proc
+}
+
 function Get-LongRunningProxyRequests([string]$Path, [int]$TimeoutSeconds, [datetime]$Since = [datetime]::MinValue) {
     if (-not (Test-Path $Path)) { return @() }
     $starts = @{}
     $ends = @{}
     foreach ($line in (Get-Content $Path -Tail 1000 -ErrorAction SilentlyContinue)) {
         if ($line -match '^\[(?<ts>[^\]]+)\] \[(?<id>[^\]]+)\].*Use OAuth provider=.* model (?<model>\S+)') {
-            $timestamp = [datetime]::Parse($matches.ts)
+            [datetime]$timestamp = [datetime]::MinValue
+            if (-not [datetime]::TryParse($matches.ts, [ref]$timestamp)) { continue }
             if ($timestamp -lt $Since) { continue }
             $starts[$matches.id] = [pscustomobject]@{ Timestamp = $timestamp; Model = $matches.model }
         } elseif ($line -match '^\[(?<ts>[^\]]+)\] \[(?<id>[^\]]+)\].*\] (?<status>\d{3}) \|\s*(?<duration>[^|]+)\|.*POST\s+"(?<path>[^"]+)"') {
@@ -436,10 +587,10 @@ function Stop-ProviderWatchdog {
     $pidPath = Get-WatchdogPidPath
     if (-not (Test-Path $pidPath)) { return }
     $watchdogPid = (Get-Content $pidPath -Raw -ErrorAction SilentlyContinue).Trim()
-    if ($watchdogPid -match '^\d+$') {
-        $proc = Get-Process -Id ([int]$watchdogPid) -ErrorAction SilentlyContinue
-        if ($proc.Id -eq $PID) { return }
-        if ($proc) { Stop-Process -Id $proc.Id -Force -Confirm:$false }
+    $proc = Get-WatchdogProcess $watchdogPid
+    if ($proc) {
+        if ([int]$proc.ProcessId -eq $PID) { return }
+        Stop-Process -Id ([int]$proc.ProcessId) -Force -Confirm:$false
     }
     Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
 }
@@ -449,11 +600,21 @@ function Start-ProviderWatchdog([int]$ResolvedPort) {
     $pidPath = Get-WatchdogPidPath
     if (Test-Path $pidPath) {
         $existingPid = (Get-Content $pidPath -Raw -ErrorAction SilentlyContinue).Trim()
-        if ($existingPid -match '^\d+$' -and (Get-Process -Id ([int]$existingPid) -ErrorAction SilentlyContinue)) { return }
+        if (Get-WatchdogProcess $existingPid) { return }
         Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
     }
-    $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, 'watchdog-run', '-Provider', $Provider, '-Port', $ResolvedPort, '-InstallDir', $InstallDir, '-ClaudeSettingsPath', $ClaudeSettingsPath, '-WatchdogTimeoutSeconds', $WatchdogTimeoutSeconds)
-    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $args -WindowStyle Hidden -PassThru
+    $args = @(
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $PSCommandPath,
+        'watchdog-run',
+        '-Provider', $Provider,
+        '-Port', $ResolvedPort,
+        '-InstallDir', $InstallDir,
+        '-ClaudeSettingsPath', $ClaudeSettingsPath,
+        '-WatchdogTimeoutSeconds', $WatchdogTimeoutSeconds
+    ) | ForEach-Object { Quote-ProcessArgument $_ }
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList ($args -join ' ') -WindowStyle Hidden -PassThru
     Set-Content -Path $pidPath -Value $proc.Id -Encoding ASCII
 }
 
@@ -464,7 +625,19 @@ function Invoke-ProviderWatchdog([int]$ResolvedPort) {
         $stale = @(Get-LongRunningProxyRequests $LogPath $WatchdogTimeoutSeconds $watchStartedAt)
         if ($stale.Count -eq 0) { continue }
         try {
-            Add-Content -Path (Join-Path $InstallDir 'codextoclaude-watchdog.log') -Value "$(Get-Date -Format s) restarting $($PMeta.Name): stale request $($stale[0].Id) age=$($stale[0].AgeSeconds)s model=$($stale[0].Model)" -Encoding UTF8
+            $logPath = Join-Path $InstallDir 'codextoclaude-watchdog.log'
+            $autoProxy = Get-AutoProxyToggle
+            if ($autoProxy) {
+                if ($autoProxy.Changed) {
+                    $writeFunc = "$($PMeta.Prefix)-WriteConfig"
+                    & $writeFunc $ResolvedPort $autoProxy.Next
+                    Add-Content -Path $logPath -Value "$(Get-Date -Format s) auto-switched proxy $($autoProxy.Current) -> $($autoProxy.Next) ($($autoProxy.Reason)) and restarting $($PMeta.Name): stale request $($stale[0].Id) age=$($stale[0].AgeSeconds)s model=$($stale[0].Model)" -Encoding UTF8
+                } else {
+                    Add-Content -Path $logPath -Value "$(Get-Date -Format s) auto-kept proxy $($autoProxy.Current) ($($autoProxy.Reason)) and restarting $($PMeta.Name): stale request $($stale[0].Id) age=$($stale[0].AgeSeconds)s model=$($stale[0].Model)" -Encoding UTF8
+                }
+            } else {
+                Add-Content -Path $logPath -Value "$(Get-Date -Format s) restarting $($PMeta.Name): stale request $($stale[0].Id) age=$($stale[0].AgeSeconds)s model=$($stale[0].Model)" -Encoding UTF8
+            }
             $stopFunc = "$($PMeta.Prefix)-StopProcess"
             $startFunc = "$($PMeta.Prefix)-StartProcess"
             & $stopFunc $ResolvedPort
@@ -667,12 +840,15 @@ function Test-ProxyTimeoutError($ErrorRecord) {
 }
 
 function Try-AutoSwitchToSocks5([int]$ResolvedPort, $ErrorRecord) {
-    if ($ProxyMode -ne 'Auto') { return $false }
+    if ((Get-EffectiveProxyMode) -ne 'Auto') { return $false }
     if (-not (Test-ProxyTimeoutError $ErrorRecord)) { return $false }
     $currentProxy = Get-ConfigValue 'proxy-url'
-    if (-not $currentProxy -or $currentProxy -notmatch '^https?://') { return $false }
-    $nextProxy = Convert-ProxyUrlScheme $currentProxy 'socks5'
-    Write-Warn "HTTP proxy timed out; switching Auto proxy to $nextProxy and retrying."
+    $currentScheme = Get-ProxyScheme $currentProxy
+    if (-not $currentScheme) { return $false }
+    if ($currentScheme -eq 'http') { $nextScheme = 'socks5' }
+    else { $nextScheme = 'http' }
+    $nextProxy = Convert-ProxyUrlScheme $currentProxy $nextScheme
+    Write-Warn "Auto proxy timed out; switching to $nextProxy and retrying."
     $writeFunc = "$($PMeta.Prefix)-WriteConfig"
     $stopFunc = "$($PMeta.Prefix)-StopProcess"
     $startFunc = "$($PMeta.Prefix)-StartProcess"
@@ -860,6 +1036,7 @@ switch ($Command) {
         $resolvedProxy = Resolve-ProxyUrl $true
         $writeFunc = "$($PMeta.Prefix)-WriteConfig"
         & $writeFunc $resolvedPort $resolvedProxy
+        Save-ProxyModeState $resolvedProxy
         $installFunc = "$($PMeta.Prefix)-InstallBinary"
         & $installFunc
         Write-OK 'Install/config step complete. Run login, configure, restart, verify next.'
@@ -900,6 +1077,7 @@ switch ($Command) {
         Ensure-InstallDir
         $writeFunc = "$($PMeta.Prefix)-WriteConfig"
         & $writeFunc $resolvedPort $resolvedProxy
+        Save-ProxyModeState $resolvedProxy
         Configure-Claude $resolvedPort
     }
 

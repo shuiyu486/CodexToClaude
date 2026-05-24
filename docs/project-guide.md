@@ -141,7 +141,7 @@ payload:
 
 ## 主 agent 卡住防护
 
-`start` 和 `restart` 必须把 provider readiness 定义为 health endpoint 成功响应，而不是仅有 TCP 端口监听。端口拥有者判断只能使用 `Listen` 状态且 `OwningProcess > 0` 的 socket，避免把 Windows 残留的 `Idle pid=0` 连接误判为端口占用。CLIProxy 启动后必须同时启动 CodexToClaude watchdog；`stop` 必须关闭 watchdog。watchdog 监控启动后的新 `/v1/messages` 长请求，默认 30 秒仍未完成时自动重启当前 CLIProxy provider，等价于用户手动点 GUI 重启；恢复尝试后必须重置观察窗口，避免旧 stale request 留在日志尾部导致重复重启。watchdog 不得因为快速返回的 5xx 响应重启 provider，避免切断正在进行的 Claude Code 流式请求；这类短错误交给 Claude Code 自身 retry。高级用户可通过 `-WatchdogTimeoutSeconds` 调整长请求阈值。
+`start` 和 `restart` 必须把 provider readiness 定义为 health endpoint 成功响应，而不是仅有 TCP 端口监听。端口拥有者判断只能使用 `Listen` 状态且 `OwningProcess > 0` 的 socket，避免把 Windows 残留的 `Idle pid=0` 连接误判为端口占用。CLIProxy 启动后必须同时启动 CodexToClaude watchdog；`stop` 必须关闭 watchdog。watchdog 监控启动后的新 `/v1/messages` 长请求，默认 60 秒仍未完成时自动重启当前 CLIProxy provider，等价于用户手动点 GUI 重启；恢复尝试后必须重置观察窗口，避免旧 stale request 留在日志尾部导致重复重启。`configure` / `install` 会把有效代理模式写入 `codextoclaude-proxy-mode.txt`，watchdog 子进程必须运行时读取该持久化模式，不得把启动时的 `ProxyMode` 固化到命令行，避免运行中重新配置显式模式后仍按旧 `Auto` 切换。`ProxyMode Auto` 下，watchdog 会把本次卡住记入 `codextoclaude-watchdog-state.json`：通常在 HTTP 和 SOCKS5 之间切换；若 10 分钟内累计至少 3 次 stale 且两种协议都出现过，则选择近期 stale 次数更少的一侧并固定 30 分钟，避免两边都卡时无意义来回切。`Http` / `Socks5` / `Direct` 显式模式不得被 watchdog 自动覆盖。watchdog 不得因为快速返回的 5xx 响应重启 provider，避免切断正在进行的 Claude Code 流式请求；这类短错误交给 Claude Code 自身 retry。高级用户可通过 `-WatchdogTimeoutSeconds` 调整长请求阈值。
 
 `verify` 和 `doctor` 遇到可恢复的本地代理或 stream-json 探测失败时，可以自动重启当前 provider 一次并重试；`status` 必须保持只读，不得 start、stop、restart、重写 config 或切换代理模式。
 
@@ -246,8 +246,8 @@ CLIProxy 诊断需要保持 bounded-retry 默认值可见：`request-retry: 1`�
 - `ProxyMode` 为 `Auto`、`Http`、`Socks5`、`Direct`；默认 `Auto`。
 - `ProxyUrl` 可以是 `host:port`，也可以以 `http://`、`https://`、`socks5://` 开头，或为 `none/direct`。
 - 安装和配置时不能猜是否需要代理；必须由用户显式提供代理模式。
-- `Auto` 先按 HTTP 写入，`verify` 遇到上游超时时可切换为同地址 SOCKS5 并持久化到 provider config；CLIProxy 同步更新 OAuth JSON 的 `proxy_url`。
-- 若用户直连，也必须显式选择 `Direct` 或提供 `none`。
+- `Auto` 先按 HTTP 写入，`verify` 或 watchdog 遇到超时/长请求卡住时可在同地址 HTTP 与 SOCKS5 间切换并持久化到 provider config；CLIProxy 同步更新 OAuth JSON 的 `proxy_url`。
+- 若用户直连，也必须显式选择 `Direct` 或提供 `none`；若已持久化 `Direct`，之后显式提供非直连 `ProxyUrl` 且未传 `ProxyMode`，应回到默认 `Auto`，不能静默忽略用户提供的代理。
 
 ## 测试和验收
 
