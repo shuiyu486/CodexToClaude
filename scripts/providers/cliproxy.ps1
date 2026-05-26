@@ -89,23 +89,36 @@ function CLIProxy-InstallBinary {
     }
 }
 
-function CLIProxy-SyncAuthProxyUrl([string]$ResolvedProxyUrl) {
+function CLIProxy-SyncAuthMetadata([string]$ResolvedProxyUrl, [bool]$SyncProxyUrl) {
     Ensure-InstallDir
     $updated = 0
     foreach ($file in (Get-ChildItem $InstallDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
         try {
             $auth = Get-Content $file.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($auth.type -ne 'codex' -or $auth.disabled -eq $true) { continue }
-            if ($ResolvedProxyUrl) {
-                Set-JsonProperty $auth 'proxy_url' $ResolvedProxyUrl
-            } else {
-                Remove-JsonProperty $auth 'proxy_url'
+            if ($SyncProxyUrl) {
+                if ($ResolvedProxyUrl) {
+                    Set-JsonProperty $auth 'proxy_url' $ResolvedProxyUrl
+                } else {
+                    Remove-JsonProperty $auth 'proxy_url'
+                }
+            }
+            if (-not $auth.PSObject.Properties['websockets']) {
+                Set-JsonProperty $auth 'websockets' $true
             }
             Write-FileUtf8NoBom $file.FullName (ConvertTo-JsonIndent2 $auth 20)
             $updated++
         } catch { }
     }
-    if ($updated -gt 0) { Write-OK "Synced Codex OAuth proxy_url on $updated auth file(s)." }
+    if ($updated -gt 0) { Write-OK "Synced Codex OAuth metadata on $updated auth file(s)." }
+}
+
+function CLIProxy-SyncAuthProxyUrl([string]$ResolvedProxyUrl) {
+    CLIProxy-SyncAuthMetadata $ResolvedProxyUrl $true
+}
+
+function CLIProxy-SyncAuthWebsockets {
+    CLIProxy-SyncAuthMetadata '' $false
 }
 
 function CLIProxy-WriteConfig([int]$ResolvedPort, [string]$ResolvedProxyUrl) {

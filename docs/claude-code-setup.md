@@ -21,7 +21,7 @@
 .\scripts\CodexToClaude.ps1 verify
 ```
 
-`ProxyMode` 可选 `Auto`、`Http`、`Socks5`、`Direct`。推荐代理用户使用 `Auto` 并填写 `127.0.0.1:7897` 这类 `host:port`；`verify` 和后台 watchdog 遇到超时或长请求卡住时可在同地址 HTTP/SOCKS5 间切换，并在短时间多次卡住后临时固定到更少超时的一侧。无代理用户使用 `-ProxyMode Direct`，兼容旧写法 `-ProxyUrl none`；如果之后重新提供非直连 `-ProxyUrl` 且不传 `-ProxyMode`，会回到默认 `Auto`。
+`ProxyMode` 可选 `Auto`、`Http`、`Socks5`、`Direct`。推荐代理用户使用 `Auto` 并填写 `127.0.0.1:7897` 这类 `host:port`；`verify` 和后台 watchdog 遇到超时或长请求卡住时可在同地址 HTTP/SOCKS5 间切换，并在短时间多次卡住后临时固定到更少超时的一侧。CLIProxy 登录/配置后会为 enabled Codex OAuth JSON 补齐缺失的 `websockets: true`，保留已有显式值。无代理用户使用 `-ProxyMode Direct`，兼容旧写法 `-ProxyUrl none`；如果之后重新提供非直连 `-ProxyUrl` 且不传 `-ProxyMode`，会回到默认 `Auto`。
 
 如果 OAuth 浏览器登录不方便：
 

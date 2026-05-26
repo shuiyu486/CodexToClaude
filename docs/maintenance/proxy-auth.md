@@ -54,6 +54,7 @@ OCC config：
 - 省略 CLIProxy `proxy-url`。
 - 省略 OCC `proxy_url`。
 - 删除 CLIProxy Codex OAuth JSON 中残留的 `proxy_url`。
+- 不得删除或覆盖 CLIProxy Codex OAuth JSON 中已有的 `websockets` 字段。
 
 ## 认证规则
 
@@ -63,6 +64,7 @@ CLIProxyAPI：
 - 忽略 settings/test/temp 命名文件。
 - 可用 auth 必须满足：JSON 可解析、`type = codex`、`disabled` 不是 `true`。
 - `login` 支持普通 OAuth 和设备码登录。
+- enabled Codex OAuth JSON 缺少 `websockets` 时补 `true`；已有 `true` / `false` 必须原样保留。
 
 OCC：
 

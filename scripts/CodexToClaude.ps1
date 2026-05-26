@@ -1066,6 +1066,10 @@ switch ($Command) {
             Write-AuthStatus $status
             throw
         }
+        if ($Provider -eq 'cliproxy') {
+            if (Test-Path $ConfigPath) { CLIProxy-SyncAuthProxyUrl (Get-ConfigValue 'proxy-url') }
+            else { CLIProxy-SyncAuthWebsockets }
+        }
         $status = Get-AuthStatus
         Write-AuthStatus $status
         if ($status.status -ne 'logged_in') { throw 'Login finished but no usable auth was found.' }

@@ -309,8 +309,27 @@ TestCase 'ProxyMode Direct removes CLIProxy auth proxy_url' {
         if ($config -match '(?m)^proxy-url:') { throw 'Direct mode should omit proxy-url.' }
         $updated = Get-Content (Join-Path $installDir 'codex-user.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($updated.PSObject.Properties['proxy_url']) { throw 'Direct mode should remove auth proxy_url.' }
+        if ($updated.websockets -ne $true) { throw 'Direct mode should add missing auth websockets=true.' }
         $mode = (Get-Content (Join-Path $installDir 'codextoclaude-proxy-mode.txt') -Raw -Encoding UTF8).Trim()
         if ($mode -ne 'Direct') { throw 'Direct mode should be persisted for watchdog subprocesses.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'CLIProxy auth metadata preserves explicit websockets false' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-ws-false"
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    New-Item -ItemType Directory $installDir -Force | Out-Null
+    try {
+        $auth = @{ type = 'codex'; email = 'user@example.com'; disabled = $false; websockets = $false; note = 'keep-me' } | ConvertTo-Json -Depth 5
+        [System.IO.File]::WriteAllText((Join-Path $installDir 'codex-user.json'), $auth, [System.Text.Encoding]::UTF8)
+        & $Script configure -Port 18327 -ProxyMode Http -ProxyUrl '127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $updated = Get-Content (Join-Path $installDir 'codex-user.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($updated.proxy_url -ne 'http://127.0.0.1:7897') { throw 'Http mode should sync auth proxy_url.' }
+        if ($updated.websockets -ne $false) { throw 'Explicit auth websockets=false should be preserved.' }
+        if ($updated.note -ne 'keep-me') { throw 'Unknown auth fields should be preserved.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }
