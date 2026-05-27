@@ -155,6 +155,15 @@ TestCase 'Verify uses a single restart recovery attempt' {
     if ($source -notmatch 'Attempting one restart recovery before retrying verify') { throw 'Verify recovery message missing.' }
 }
 
+TestCase 'Verify exposes optional advanced compatibility checks' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    if ($source -notmatch '\[switch\]\$CheckTools') { throw 'verify should expose -CheckTools.' }
+    if ($source -notmatch '\[switch\]\$CheckPromptCaching') { throw 'verify should expose -CheckPromptCaching.' }
+    if ($source -notmatch 'function\s+Invoke-ToolUseVerify') { throw 'Tool-use verify helper missing.' }
+    if ($source -notmatch 'function\s+Invoke-PromptCachingVerify') { throw 'Prompt caching verify helper missing.' }
+    if ($source -notmatch 'function\s+Verify-Setup\(\[int\]\$ResolvedPort\)\s*\{\s*Invoke-VerifyWithRecovery\s+\$ResolvedPort\s*Invoke-AdvancedVerify\s+\$ResolvedPort') { throw 'Verify setup should run advanced checks outside restart recovery.' }
+}
+
 TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
     $source = Get-Content $Script -Raw -Encoding UTF8
     $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8

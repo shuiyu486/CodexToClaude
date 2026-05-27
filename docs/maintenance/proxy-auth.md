@@ -123,6 +123,11 @@ OCC：
 - 保留非 env 配置。
 - 不引入 shell profile 依赖。
 
+高级兼容检查必须保持显式 opt-in，避免普通 `verify` 因 provider 不支持高级 Anthropic 功能而失败：
+
+- `verify -CheckTools` 检查 `tools`、`tool_use`、`tool_result` 基本链路。
+- `verify -CheckPromptCaching` 检查 prompt caching 的 `usage` 字段是否保留。
+
 提交前检查：
 
 ```powershell

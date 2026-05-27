@@ -22,6 +22,8 @@ param(
     [switch]$Device,
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
+    [switch]$CheckTools,
+    [switch]$CheckPromptCaching,
     [switch]$Json,
     [int]$WatchdogTimeoutSeconds = 60
 )
@@ -192,7 +194,7 @@ function Show-Help {
     Write-Host '  restart      Stop then start and wait for readiness'
     Write-Host '  status       Show local setup status for current provider'
     Write-Host '  auth-status  Show authentication status for current provider'
-    Write-Host '  verify       Verify /v1/models and /v1/messages'
+    Write-Host '  verify       Verify /v1/models and /v1/messages; add -CheckTools or -CheckPromptCaching for advanced checks'
     Write-Host '  doctor       Run status and verify'
     Write-Host '  project-version   Show CodexToClaude VERSION and git status'
     Write-Host '  project-update    Safely update CodexToClaude with git pull --ff-only'
@@ -784,6 +786,104 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
     else { Write-OK "Claude stream-json text check passed: text_delta_count=$textCount" }
 }
 
+function New-AnthropicHeaders([hashtable]$ExtraHeaders) {
+    $headers = @{
+        'x-api-key' = $ApiKey
+        'anthropic-version' = '2023-06-01'
+        'Content-Type' = 'application/json'
+    }
+    if ($ExtraHeaders) {
+        foreach ($key in $ExtraHeaders.Keys) { $headers[$key] = $ExtraHeaders[$key] }
+    }
+    return $headers
+}
+
+function Invoke-AnthropicMessageBody([int]$ResolvedPort, [object]$BodyObject, [hashtable]$ExtraHeaders) {
+    $headers = New-AnthropicHeaders $ExtraHeaders
+    $body = $BodyObject | ConvertTo-Json -Depth 30
+    return Invoke-RestMethod -Uri "http://127.0.0.1:$ResolvedPort/v1/messages" -Method Post -Headers $headers -Body $body -TimeoutSec 120
+}
+
+function Get-ContentBlockByType([object]$Message, [string]$Type) {
+    if (-not $Message.content) { return $null }
+    foreach ($part in $Message.content) {
+        if ($part.type -eq $Type) { return $part }
+    }
+    return $null
+}
+
+function Invoke-ToolUseVerify([int]$ResolvedPort) {
+    Write-Step 'Verifying Anthropic tool-use compatibility'
+    $tool = @{
+        name = 'ctc_echo'
+        description = 'Echoes a short diagnostic string.'
+        input_schema = @{
+            type = 'object'
+            properties = @{ text = @{ type = 'string' } }
+            required = @('text')
+        }
+    }
+    $firstBody = @{
+        model = $SonnetModel
+        max_tokens = 256
+        tools = @($tool)
+        tool_choice = @{ type = 'tool'; name = 'ctc_echo' }
+        messages = @(@{ role = 'user'; content = 'Call ctc_echo with text set to ok.' })
+    }
+    $first = Invoke-AnthropicMessageBody $ResolvedPort $firstBody $null
+    $toolUse = Get-ContentBlockByType $first 'tool_use'
+    if (-not $toolUse -or -not $toolUse.id) { throw 'Tool-use check did not receive a tool_use content block.' }
+
+    $secondBody = @{
+        model = $SonnetModel
+        max_tokens = 256
+        tools = @($tool)
+        messages = @(
+            @{ role = 'user'; content = 'Call ctc_echo with text set to ok.' },
+            @{ role = 'assistant'; content = @($toolUse) },
+            @{ role = 'user'; content = @(@{ type = 'tool_result'; tool_use_id = $toolUse.id; content = 'ok' }) }
+        )
+    }
+    $second = Invoke-AnthropicMessageBody $ResolvedPort $secondBody $null
+    if (-not $second.content) { throw 'Tool-result check returned no content.' }
+    Write-OK 'Tool-use and tool-result checks passed.'
+}
+
+function Get-UsageValue([object]$Usage, [string]$Name) {
+    if (-not $Usage) { return $null }
+    $prop = $Usage.PSObject.Properties[$Name]
+    if ($prop) { return $prop.Value }
+    return $null
+}
+
+function Invoke-PromptCachingVerify([int]$ResolvedPort) {
+    Write-Step 'Verifying prompt caching usage fields'
+    $cachedSystem = @(
+        @{
+            type = 'text'
+            text = 'CodexToClaude prompt caching compatibility probe. Keep this prefix stable.'
+            cache_control = @{ type = 'ephemeral' }
+        }
+    )
+    $body = @{
+        model = $SonnetModel
+        max_tokens = 20
+        system = $cachedSystem
+        messages = @(@{ role = 'user'; content = 'Reply OK.' })
+    }
+    $first = Invoke-AnthropicMessageBody $ResolvedPort $body $null
+    $second = Invoke-AnthropicMessageBody $ResolvedPort $body $null
+    $created = Get-UsageValue $first.usage 'cache_creation_input_tokens'
+    $read = Get-UsageValue $second.usage 'cache_read_input_tokens'
+    if ($null -eq $created -and $null -eq $read) { throw 'Prompt caching usage fields are missing from responses.' }
+    Write-OK "Prompt caching usage fields observed: created=$created, read=$read"
+}
+
+function Invoke-AdvancedVerify([int]$ResolvedPort) {
+    if ($CheckTools) { Invoke-ToolUseVerify $ResolvedPort }
+    if ($CheckPromptCaching) { Invoke-PromptCachingVerify $ResolvedPort }
+}
+
 function Get-ProviderRiskDiagnostics {
     $func = "$($PMeta.Prefix)-GetRiskDiagnostics"
     if (Get-Command $func -ErrorAction SilentlyContinue) { return @(& $func) }
@@ -922,6 +1022,7 @@ function Invoke-VerifyWithRecovery([int]$ResolvedPort) {
 
 function Verify-Setup([int]$ResolvedPort) {
     Invoke-VerifyWithRecovery $ResolvedPort
+    Invoke-AdvancedVerify $ResolvedPort
 }
 
 # ============================================================
