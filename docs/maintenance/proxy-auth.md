@@ -91,6 +91,7 @@ OCC：
 - `NO_PROXY` / `no_proxy` 必须包含 `127.0.0.1`、`localhost`、`::1`，以及当前 provider 的 `127.0.0.1:<Port>` / `localhost:<Port>`。
 - CLIProxy 后端移除 `CLAUDE_CODE_EFFORT_LEVEL`，配合 `payload.filter` 过滤 reasoning/thinking 参数。
 - OCC 后端设置 `CLAUDE_CODE_EFFORT_LEVEL = "max"`。
+- 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；除非 provider 已验证支持 `tool_reference` blocks，否则不要设置 `ENABLE_TOOL_SEARCH=true`。
 
 常见目标 env 键：
 
@@ -103,6 +104,7 @@ OCC：
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL`
 - `ANTHROPIC_DEFAULT_OPUS_MODEL_NAME`
 - `ANTHROPIC_DEFAULT_SONNET_MODEL_NAME`
+- `ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME`
 - `CLAUDE_CODE_EFFORT_LEVEL`
 
 ## 验证要求

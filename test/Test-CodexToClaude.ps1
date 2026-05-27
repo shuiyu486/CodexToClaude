@@ -250,6 +250,32 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
     }
 }
 
+TestCase 'Configure preserves non-env Claude settings' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-settings"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    New-Item -ItemType Directory (Split-Path -Parent $settingsPath) -Force | Out-Null
+    try {
+        $initial = [pscustomobject]@{
+            statusLine = [pscustomobject]@{ type = 'command'; command = 'ctc-status' }
+            permissions = [pscustomobject]@{ allow = @('Bash(git status:*)') }
+            language = 'zh-CN'
+            env = [pscustomobject]@{ EXISTING_KEY = 'keep-me' }
+        } | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($settingsPath, $initial, [System.Text.Encoding]::UTF8)
+        & $Script configure -Port 18327 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.statusLine.command -ne 'ctc-status') { throw 'statusLine should be preserved.' }
+        if (@($settings.permissions.allow)[0] -ne 'Bash(git status:*)') { throw 'permissions should be preserved.' }
+        if ($settings.language -ne 'zh-CN') { throw 'language should be preserved.' }
+        if ($settings.env.EXISTING_KEY -ne 'keep-me') { throw 'existing env values should be preserved.' }
+        if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18327') { throw 'Claude base URL should be updated.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 TestCase 'ProxyUrl writes explicit proxy-url line' {
     $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-proxy"
     New-Item -ItemType Directory $fakeHome -Force | Out-Null
@@ -416,6 +442,7 @@ TestCase 'Configure models writes Claude model env values' {
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-haiku-test(low)') { throw 'Haiku model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-opus-test') { throw 'Opus model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-sonnet-test') { throw 'Sonnet model name mismatch.' }
+        if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME -ne 'gpt-haiku-test') { throw 'Haiku model name mismatch.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

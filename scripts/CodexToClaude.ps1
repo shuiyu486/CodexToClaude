@@ -994,6 +994,7 @@ function Set-ClaudeModelEnv([object]$Settings) {
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' ($OpusModel -replace '\(.*\)$', '')
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
+    Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME' ($HaikuModel -replace '\(.*\)$', '')
     Remove-JsonProperty $Settings.env 'ANTHROPIC_MODEL'
 }
 
