@@ -45,6 +45,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - `install`：创建/更新 provider config，必要时下载 exe。
 - `login`：CLIProxy 执行 Codex OAuth；OCC 必须报错并提示 API key 方式。
 - `configure`：写 provider config，并合并更新 Claude Code `settings.json` 的 env。
+- `set-proxy-env`：按当前 `ProxyMode` / `ProxyUrl` 写入或清理用户级命令行代理环境变量，不设置 Windows 系统代理或 WinHTTP。
 - `start` / `stop` / `restart`：管理 provider 进程；两个后端可在不同端口同时运行。
 - `status`：只读状态检查；不得启动、停止、重写配置或切换代理。
 - `auth-status`：检查当前 provider 认证状态。
@@ -104,8 +105,8 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 
 | 改动 | 额外验证 |
 |---|---|
-| 代理逻辑 | `Auto host:port -> http://...`、`Socks5 -> socks5://...`、`Direct` 省略代理并清理 CLIProxy auth `proxy_url` |
-| GUI | UI 脚本可解析、`CodexToClaude-GUI.cmd` 存在、中英文切换、快速向导关键路径 |
+| 代理逻辑 | `Auto host:port -> http://...`、`Socks5 -> socks5://...`、`Direct` 省略代理并清理 CLIProxy auth `proxy_url`；命令行 env 只写 User 作用域并保留既有 `NO_PROXY` |
+| GUI | UI 脚本可解析、`CodexToClaude-GUI.cmd` 存在、中英文切换、快速向导关键路径；命令输出增量读取且先脱敏 |
 | auth/status | 不输出 token；CLIProxy 只扫描 `$InstallDir` 根目录 JSON；OCC 检查 API key 来源 |
 | settings 合并 | 只更新目标 env 键，保留 `statusLine`、`permissions`、`language` 等字段 |
 | update 逻辑 | 停服、备份、替换、恢复启动；dirty 工作区阻断 project update |

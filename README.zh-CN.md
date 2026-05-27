@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.21-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.22-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -45,6 +45,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🛟 **卡住恢复 watchdog** — `/v1/messages` 请求超过 60 秒仍未完成时自动重启 CLIProxyAPI；`Auto` 模式会统计近期 HTTP/SOCKS5 卡住次数，并临时固定到更少卡住的一侧。
 - 🔌 **Codex WebSocket auth 标记** — enabled Codex OAuth JSON 缺少 `websockets` 时自动补 `true`，并保留已有显式值。
 - 🧭 **本地代理绕过** — 自动为本地 provider URL 写入 `NO_PROXY` / `no_proxy`，避免 Claude Code 把 `127.0.0.1:<Port>` 请求送进系统代理。
+- 🖥️ **命令行代理环境变量** — 诊断工具可把当前代理配置写入用户级 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`，方便新开的 cmd、PowerShell、Git Bash 使用；不会设置 Windows 系统代理或 WinHTTP。
 - 📦 **版本管理** — GUI 和 CLI 都能查看/更新项目与后端二进制。
 - 🔐 **安全默认值** — OAuth JSON、token、API key、日志均被 `.gitignore` 排除，脚本不会打印真实密钥。
 

@@ -70,6 +70,18 @@ TestCase 'GUI log box resizes and preserves readable output' {
     if ($source -notmatch '\$logBox\.ScrollBars\s*=\s*''Both''' -or $source -notmatch '\$logBox\.WordWrap\s*=\s*\$false') { throw 'Log box should keep command output readable with horizontal scrolling.' }
 }
 
+TestCase 'GUI command runner avoids shell injection and redacts logs' {
+    $source = Get-Content $UiScript -Raw -Encoding UTF8
+    if ($source -match "Start-Process\s+-FilePath\s+'cmd\.exe'") { throw 'GUI command runner must not invoke cmd.exe /c with user input.' }
+    if ($source -notmatch 'Build-WrapperScript\s+\$cliOnly') { throw 'GUI should pass CLI args through a generated wrapper script.' }
+    if ($source -notmatch 'RedirectStandardOutput\s+\$stdout' -or $source -notmatch 'RedirectStandardError\s+\$stderr') { throw 'GUI should capture stdout and stderr without cmd.exe redirection.' }
+    if ($source -notmatch 'function\s+Redact-UiLogText') { throw 'GUI log redaction helper missing.' }
+    if ($source -notmatch 'Normalize-LogText\s+\(Redact-UiLogText\s+\$Text\)') { throw 'Append-Log should redact before writing to the log box.' }
+    foreach ($pattern in @('Authorization', 'Bearer', 'access_token', 'refresh_token', 'id_token', 'x-api-key', 'sk-')) {
+        if ($source -notmatch [regex]::Escape($pattern)) { throw "GUI redaction missing pattern: $pattern" }
+    }
+}
+
 TestCase 'Wait-ServiceReady requires health endpoint success' {
     $func = Get-FunctionAst $Script 'Wait-ServiceReady'
     $body = $func.Body.Extent.Text
@@ -198,6 +210,12 @@ TestCase 'CLIProxy update replaces existing exe safely' {
     if ($clip -notmatch 'Restored previous cli-proxy-api\.exe after update failure') { throw 'CLIProxy update should restore backup after replacement failure.' }
 }
 
+TestCase 'OCC update replaces existing exe safely' {
+    $occ = Get-Content (Join-Path $RepoRoot 'scripts\providers\occ.ps1') -Raw -Encoding UTF8
+    if ($occ -notmatch 'Remove-Item\s+\$ExePath\s+-Force') { throw 'OCC update should remove the existing exe before Move-Item on Windows PowerShell 5.1.' }
+    if ($occ -notmatch 'Restored previous oc-go-cc\.exe after update failure') { throw 'OCC update should restore backup after replacement failure.' }
+}
+
 TestCase 'CLIProxy install refreshes existing exe from latest release' {
     $func = Get-FunctionAst (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') 'CLIProxy-InstallBinary'
     $body = $func.Body.Extent.Text
@@ -229,6 +247,32 @@ TestCase 'Project VERSION file exists and is semantic' {
 
 TestCase 'Help command runs and explains Port ProxyUrl' {
     & $Script help
+}
+
+TestCase 'set-proxy-env configures User-scope CLI environment only' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    if ($source -notmatch "'set-proxy-env'") { throw 'set-proxy-env command missing.' }
+    if ($source -notmatch 'User-scope command-line proxy env') { throw 'Help should describe User-scope command-line proxy env values.' }
+    if ($source -match 'Machine-scope') { throw 'set-proxy-env must not describe Machine-scope environment changes.' }
+    if ($source -notmatch 'SetEnvironmentVariable\(\$Name, \$Value, ''User''\)') { throw 'set-proxy-env should write User-scope environment variables.' }
+    if ($source -notmatch '\[AllowNull\(\)\]\[string\]\$Value') { throw 'Direct mode clearing should pass null through to SetEnvironmentVariable.' }
+    if ($source -notmatch 'Send-EnvironmentChangeBroadcast') { throw 'set-proxy-env should broadcast User environment changes.' }
+    if ($source -notmatch 'Merge-NoProxyValue') { throw 'set-proxy-env should preserve existing NO_PROXY entries.' }
+    foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'NO_PROXY', 'no_proxy')) {
+        if ($source -notmatch [regex]::Escape($name)) { throw "set-proxy-env missing environment variable: $name" }
+    }
+    foreach ($blocked in @('netsh', 'WinHTTP', 'Internet Settings', 'ProxyEnable', 'ProxyServer', 'git config', 'npm config', 'HKCU:', 'HKLM:', 'Set-ItemProperty')) {
+        if ($source -match [regex]::Escape($blocked)) { throw "set-proxy-env must not touch system proxy settings: $blocked" }
+    }
+    if ($source -notmatch 'if \(\$ResolvedProxyUrl -eq ''''\) \{ Set-UserEnvironmentVariable \$name \$null \}') { throw 'Direct mode should clear proxy environment variables.' }
+    if ($source -notmatch 'Get-LocalNoProxyItems[\s\S]*127\.0\.0\.1[\s\S]*localhost[\s\S]*::1[\s\S]*127\.0\.0\.1:\$ResolvedPort[\s\S]*localhost:\$ResolvedPort') { throw 'NO_PROXY should include local provider addresses.' }
+    if ($source -notmatch 'ToLowerInvariant\(\).*@\(''none'', ''direct'', ''no'', ''off'', ''false''\)') { throw 'Direct proxy sentinels should be case-insensitive.' }
+}
+
+TestCase 'GUI exposes set-proxy-env diagnostics action' {
+    $source = Get-Content $UiScript -Raw -Encoding UTF8
+    if ($source -notmatch 'btn\.setProxyEnv') { throw 'GUI should include set proxy env text key.' }
+    if ($source -notmatch 'Run-Command ''set-proxy-env'' \$true') { throw 'GUI should call set-proxy-env with current port/proxy fields.' }
 }
 
 TestCase 'ProxyUrl none configure writes no proxy-url line' {

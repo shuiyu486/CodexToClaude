@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.21-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.22-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -45,6 +45,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🛟 **Hang recovery watchdog** — Restarts CLIProxyAPI when a `/v1/messages` request runs longer than 60 seconds; in `Auto` mode, repeated HTTP/SOCKS5 stalls are scored so the less failure-prone scheme is pinned temporarily.
 - 🔌 **Codex WebSocket auth tagging** — Ensures enabled Codex OAuth JSON has `websockets: true` when missing, while preserving explicit values.
 - 🧭 **Local proxy bypass** — Writes `NO_PROXY` / `no_proxy` for the local provider URL so Claude Code does not send `127.0.0.1:<Port>` traffic through your system proxy.
+- 🖥️ **Command-line proxy env** — The diagnostics tools can write the current proxy config to User-scope `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` for new cmd, PowerShell, and Git Bash sessions, without changing Windows system proxy or WinHTTP.
 - 📦 **Version management** — View and update the project and provider binaries from either the GUI or CLI.
 - 🔐 **Safe defaults** — OAuth JSON, tokens, API keys, and logs are git-ignored, and scripts do not print real secrets.
 

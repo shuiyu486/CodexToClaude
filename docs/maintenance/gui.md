@@ -64,11 +64,12 @@ GUI 偏好文件保存到：
 ## 命令输出与诊断
 
 - GUI 执行 CLI 命令时，进程运行期间必须增量显示 stdout/stderr。
+- GUI 不得通过 `cmd.exe /c` 拼接用户输入；应通过临时 wrapper 或等价的安全参数传递方式调用 CLI，避免命令注入和命令行泄露 API key。
 - 设备码登录会等待用户授权，不能等进程退出后才读取输出。
 - GUI 启动和登录后都要刷新 Login status。
 - 登录状态以 `auth-status -Json` 为唯一真源。
 - 日志框必须随主窗口横向和纵向拉伸，保留换行和长行横向滚动。
-- 输出日志片段前必须脱敏，不能包含 OAuth token、API key、bearer token 或完整 auth JSON。
+- 输出日志片段前必须脱敏，不能包含 OAuth token、API key、bearer token 或完整 auth JSON；所有增量 stdout/stderr 都必须经过统一日志入口。
 
 ## PowerShell/WinForms gotchas
 
@@ -93,3 +94,4 @@ GUI 修改后至少确认：
 - 快速向导仍按 `Install -> Login -> Configure -> Restart -> Verify` 调用 CLI。
 - OCC 后端隐藏 Login 步骤并保留 API key 输入路径。
 - 高级管理按钮只调用 CLI 子命令，不直接执行 git、下载、替换 exe 或写 settings。
+- 诊断工具中的命令行代理环境变量按钮只调用 CLI `set-proxy-env`；不得在 GUI 中直接写环境变量。

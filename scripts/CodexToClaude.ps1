@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('install', 'login', 'configure', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'project-version', 'project-update', 'cliproxy-version', 'cliproxy-update', 'models', 'configure-models', 'watchdog-start', 'watchdog-stop', 'watchdog-run', 'help')]
+    [ValidateSet('install', 'login', 'configure', 'set-proxy-env', 'start', 'stop', 'restart', 'status', 'auth-status', 'verify', 'doctor', 'project-version', 'project-update', 'cliproxy-version', 'cliproxy-update', 'models', 'configure-models', 'watchdog-start', 'watchdog-stop', 'watchdog-run', 'help')]
     [string]$Command = 'help',
 
     # --- Provider selection ---
@@ -189,6 +189,7 @@ function Show-Help {
     Write-Host '  install      Install/update proxy config and optionally download executable'
     Write-Host '  login        Run authentication (Codex OAuth only; OCC uses API key env var)'
     Write-Host '  configure    Write proxy config and merge Claude Code settings.json env values'
+    Write-Host '  set-proxy-env  Set User-scope command-line proxy env values from ProxyMode/ProxyUrl'
     Write-Host '  start        Start the proxy server in background'
     Write-Host '  stop         Stop the proxy server listening on configured port'
     Write-Host '  restart      Stop then start and wait for readiness'
@@ -245,7 +246,7 @@ function Normalize-ProxyUrl([string]$Value, [string]$Mode) {
     if ($null -eq $Value) { return $null }
     $v = $Value.Trim()
     if ($v -eq '') { return $null }
-    if ($v -in @('none', 'direct', 'no', 'off', 'false')) { return '' }
+    if ($v.ToLowerInvariant() -in @('none', 'direct', 'no', 'off', 'false')) { return '' }
     if ($v -match '^[a-zA-Z][a-zA-Z0-9+.-]*://' -and $v -notmatch '^(http|https|socks5)://') {
         throw 'proxy-url must start with http://, https://, or socks5://. Use Direct mode or none if no proxy is needed.'
     }
@@ -268,7 +269,7 @@ function Get-ProxyScheme([string]$Value) {
 
 function Test-DirectProxyUrl([string]$Value) {
     if ($null -eq $Value) { return $false }
-    return ($Value.Trim() -in @('none', 'direct', 'no', 'off', 'false'))
+    return ($Value.Trim().ToLowerInvariant() -in @('none', 'direct', 'no', 'off', 'false'))
 }
 
 function Get-ProxyModeStatePath {
@@ -688,6 +689,71 @@ function Remove-JsonProperty([object]$Object, [string]$Name) {
     if ($prop) { $Object.PSObject.Properties.Remove($Name) }
 }
 
+function Get-LocalNoProxyItems([int]$ResolvedPort) {
+    return @('127.0.0.1', 'localhost', '::1', "127.0.0.1:$ResolvedPort", "localhost:$ResolvedPort")
+}
+
+function Get-LocalNoProxyValue([int]$ResolvedPort) {
+    return ((Get-LocalNoProxyItems $ResolvedPort) -join ',')
+}
+
+function Merge-NoProxyValue([string]$Existing, [string[]]$RequiredItems) {
+    $items = @()
+    if ($Existing) {
+        $items += ($Existing -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
+    $items += $RequiredItems
+    return (($items | Select-Object -Unique) -join ',')
+}
+
+function Get-CommandLineProxyEnvNames {
+    return @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy')
+}
+
+function Get-UserEnvironmentVariable([string]$Name) {
+    return [Environment]::GetEnvironmentVariable($Name, 'User')
+}
+
+function Set-UserEnvironmentVariable([string]$Name, [AllowNull()][string]$Value) {
+    [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
+}
+
+function Send-EnvironmentChangeBroadcast {
+    if (-not ('CodexToClaude.NativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace CodexToClaude {
+    public static class NativeMethods {
+        [DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Auto)]
+        public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+    }
+}
+'@
+    }
+    $result = [UIntPtr]::Zero
+    [CodexToClaude.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'Environment', 0x0002, 5000, [ref]$result) | Out-Null
+}
+
+function Set-CommandLineProxyEnv([int]$ResolvedPort, [string]$ResolvedProxyUrl) {
+    Write-Step 'Configuring User-scope command-line proxy environment variables'
+    foreach ($name in Get-CommandLineProxyEnvNames) {
+        if ($ResolvedProxyUrl -eq '') { Set-UserEnvironmentVariable $name $null }
+        else { Set-UserEnvironmentVariable $name $ResolvedProxyUrl }
+    }
+    $noProxy = Merge-NoProxyValue (Get-UserEnvironmentVariable 'NO_PROXY') (Get-LocalNoProxyItems $ResolvedPort)
+    Set-UserEnvironmentVariable 'NO_PROXY' $noProxy
+    Set-UserEnvironmentVariable 'no_proxy' $noProxy
+    Send-EnvironmentChangeBroadcast
+    if ($ResolvedProxyUrl -eq '') {
+        Write-OK 'Cleared User-scope command-line proxy env values.'
+    } else {
+        Write-OK "Set User-scope command-line proxy env values to $ResolvedProxyUrl"
+    }
+    Write-Info 'Open a new cmd, PowerShell, or Git Bash window for the updated User environment to take effect.'
+}
+
 function Configure-Claude([int]$ResolvedPort) {
     Write-Step 'Configuring Claude Code settings.json'
     $claudeDir = Split-Path -Parent $ClaudeSettingsPath
@@ -702,7 +768,7 @@ function Configure-Claude([int]$ResolvedPort) {
     }
     Set-JsonProperty $settings.env 'ANTHROPIC_AUTH_TOKEN' $ApiKey
     Set-JsonProperty $settings.env 'ANTHROPIC_BASE_URL' "http://127.0.0.1:$ResolvedPort"
-    $noProxy = "127.0.0.1,localhost,::1,127.0.0.1:$ResolvedPort,localhost:$ResolvedPort"
+    $noProxy = Get-LocalNoProxyValue $ResolvedPort
     Set-JsonProperty $settings.env 'NO_PROXY' $noProxy
     Set-JsonProperty $settings.env 'no_proxy' $noProxy
     Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL' $OpusModel
@@ -1185,6 +1251,13 @@ switch ($Command) {
         & $writeFunc $resolvedPort $resolvedProxy
         Save-ProxyModeState $resolvedProxy
         Configure-Claude $resolvedPort
+    }
+
+    'set-proxy-env' {
+        $resolvedPort = Resolve-Port $true
+        $resolvedProxy = Resolve-ProxyUrl $true
+        Save-ProxyModeState $resolvedProxy
+        Set-CommandLineProxyEnv $resolvedPort $resolvedProxy
     }
 
     'start' {

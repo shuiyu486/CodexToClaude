@@ -93,6 +93,15 @@ OCC：
 - OCC 后端设置 `CLAUDE_CODE_EFFORT_LEVEL = "max"`。
 - 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；除非 provider 已验证支持 `tool_reference` blocks，否则不要设置 `ENABLE_TOOL_SEARCH=true`。
 
+## 命令行代理环境变量
+
+`set-proxy-env` 和 GUI 诊断按钮只写当前用户级命令行环境变量，供新开的 cmd、PowerShell、Git Bash、git/curl/npm 类工具读取；不得设置 Windows 系统代理、WinHTTP、Machine 作用域、`git config` 或 `npm config`。
+
+- 非 `Direct`：写入 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 及小写同名变量。
+- `Direct`：清理上述代理变量。
+- `NO_PROXY` / `no_proxy` 必须合并保留用户已有条目，并追加 `127.0.0.1`、`localhost`、`::1`、当前 provider 的 `127.0.0.1:<Port>` / `localhost:<Port>`。
+- 写入 User 环境后广播 `Environment` 变更；已打开的终端仍建议重开。
+
 常见目标 env 键：
 
 - `ANTHROPIC_AUTH_TOKEN`

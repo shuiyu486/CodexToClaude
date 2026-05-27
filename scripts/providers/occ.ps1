@@ -401,22 +401,27 @@ function OCC-UpdateBinary {
         Write-Warn "Could not determine or stop running service: $($_.Exception.Message)"
     }
 
+    $backup = $null
     try {
         $latest = OCC-GetLatestRelease
         $staged = Join-Path $InstallDir 'oc-go-cc.new.exe'
         if (Test-Path $staged) { Remove-Item $staged -Force }
         OCC-InstallAsset $latest.asset.browser_download_url $latest.asset.name $staged
         if (-not (Test-Path $staged)) { throw 'Downloaded oc-go-cc executable was not created.' }
-        $backup = $null
         if (Test-Path $ExePath) {
             $backup = Join-Path $InstallDir "oc-go-cc.backup-$(Get-Date -Format 'yyyyMMddHHmmss').exe"
             Copy-Item -Force $ExePath $backup
             Write-Info "Backup: $backup"
+            Remove-Item $ExePath -Force
         }
-        Move-Item -Force $staged $ExePath
+        Move-Item $staged $ExePath
         Write-OK "Updated oc-go-cc to latest release: $($latest.release.tag_name)"
     } catch {
         Write-Fail "Download or install failed: $($_.Exception.Message)"
+        if ($backup -and (Test-Path $backup)) {
+            Copy-Item -Force $backup $ExePath
+            Write-Warn 'Restored previous oc-go-cc.exe after update failure.'
+        }
         if ($wasRunning -and $null -ne $resolvedPort) {
             try { OCC-StartProcess $resolvedPort } catch {
                 Write-Warn "Could not restart service after update failure: $($_.Exception.Message)"

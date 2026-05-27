@@ -98,6 +98,7 @@ $I18N = @{
         'btn.configureModels' = 'Save Models'
         'btn.advancedManagement' = 'Advanced Management'
         'btn.diagnostics' = 'Diagnostics'
+        'btn.setProxyEnv' = 'Set CLI Proxy Env'
         'field.opusModel' = 'Opus model'
         'field.sonnetModel' = 'Sonnet model'
         'field.haikuModel' = 'Haiku model'
@@ -191,6 +192,7 @@ $I18N = @{
         'btn.configureModels' = '保存模型'
         'btn.advancedManagement' = '高级管理'
         'btn.diagnostics' = '诊断工具'
+        'btn.setProxyEnv' = '设置命令行代理环境变量'
         'field.opusModel' = 'Opus 模型'
         'field.sonnetModel' = 'Sonnet 模型'
         'field.haikuModel' = 'Haiku 模型'
@@ -448,8 +450,18 @@ function Normalize-LogText([string]$Text) {
     return (($Text -replace "`r`n", "`n") -replace "`r", "`n") -replace "`n", [Environment]::NewLine
 }
 
+function Redact-UiLogText([string]$Text) {
+    if ($null -eq $Text -or $Text -eq '') { return $Text }
+    $redacted = $Text
+    $redacted = $redacted -replace '(?i)(Authorization\s*:\s*Bearer\s+)[^\s"'']+', '$1[REDACTED]'
+    $redacted = $redacted -replace '(?i)((x-api-key|api[_-]?key|access_token|refresh_token|id_token)\s*[:=]\s*["'']?)[^\s,"'']+', '$1[REDACTED]'
+    $redacted = $redacted -replace 'sk-[A-Za-z0-9._-]+', 'sk-[REDACTED]'
+    $redacted = $redacted -replace '(?i)((https?|socks5)://)([^:\s/@]+):([^@\s]+)@', '$1[REDACTED]@'
+    return $redacted
+}
+
 function Append-Log([string]$Text) {
-    $normalized = Normalize-LogText $Text
+    $normalized = Normalize-LogText (Redact-UiLogText $Text)
     $logBox.AppendText($normalized + [Environment]::NewLine)
     $logBox.SelectionStart = $logBox.Text.Length
     $logBox.ScrollToCaret()
@@ -530,11 +542,18 @@ function Build-Args([string]$Command, [bool]$NeedPortProxy) {
     return $cliArgs
 }
 
-function Build-WrapperScript {
+function ConvertTo-PowerShellSingleQuotedString([string]$Value) {
+    return "'$($Value -replace '''', '''''')'"
+}
+
+function Build-WrapperScript([string[]]$CliArgs) {
     $wrapperPath = Join-Path $env:TEMP "ctc-wrap-$([guid]::NewGuid().ToString()).ps1"
+    $argLiterals = @($CliArgs | ForEach-Object { ConvertTo-PowerShellSingleQuotedString $_ })
+    $scriptLiteral = ConvertTo-PowerShellSingleQuotedString $ScriptPath
     $content = @"
 `$ErrorActionPreference = 'Stop'
-& '$ScriptPath' @args *>&1
+`$cliArgs = @($($argLiterals -join ', '))
+& $scriptLiteral @cliArgs *>&1
 "@
     [System.IO.File]::WriteAllText($wrapperPath, $content, [System.Text.Encoding]::UTF8)
     return $wrapperPath
@@ -547,24 +566,28 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
     Append-Log ""
     Append-Log "> $Command"
     $stdout = Join-Path $env:TEMP "ctc-ui-stdout-$([guid]::NewGuid().ToString()).txt"
+    $stderr = Join-Path $env:TEMP "ctc-ui-stderr-$([guid]::NewGuid().ToString()).txt"
     $wrapperPath = $null
     try {
         $cliFullArgs = Build-Args $Command $NeedPortProxy
-        $wrapperPath = Build-WrapperScript
         $scriptIdx = [array]::IndexOf($cliFullArgs, $ScriptPath)
         $cliOnly = if ($scriptIdx -ge 0) { $cliFullArgs[($scriptIdx + 1)..($cliFullArgs.Count - 1)] } else { @() }
-        $quotedCli = foreach ($a in @($wrapperPath) + $cliOnly) { if ($a -match '\s') { "`"$a`"" } else { $a } }
-        $cmdArgs = @('/c', 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' + ($quotedCli -join ' ') + " > `"$stdout`" 2>&1")
-        $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList $cmdArgs -PassThru -WindowStyle Hidden
-        $outputPosition = 0
+        $wrapperPath = Build-WrapperScript $cliOnly
+        $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $wrapperPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
+        $stdoutPosition = 0
+        $stderrPosition = 0
         while (-not $proc.HasExited) {
-            $newOutput = Read-NewOutput $stdout ([ref]$outputPosition)
+            $newOutput = Read-NewOutput $stdout ([ref]$stdoutPosition)
             if ($newOutput) { Append-Log $newOutput.TrimEnd() }
+            $newError = Read-NewOutput $stderr ([ref]$stderrPosition)
+            if ($newError) { Append-Log $newError.TrimEnd() }
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 200
         }
-        $newOutput = Read-NewOutput $stdout ([ref]$outputPosition)
+        $newOutput = Read-NewOutput $stdout ([ref]$stdoutPosition)
         if ($newOutput) { Append-Log $newOutput.TrimEnd() }
+        $newError = Read-NewOutput $stderr ([ref]$stderrPosition)
+        if ($newError) { Append-Log $newError.TrimEnd() }
         Append-Log ""
         Append-Log "ExitCode: $($proc.ExitCode)"
         if ($Command -eq 'login' -or $Command -eq 'install' -or $Command -eq 'configure') { Refresh-AuthStatus }
@@ -575,6 +598,7 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
         return $false
     } finally {
         Remove-Item $stdout -Force -ErrorAction SilentlyContinue
+        Remove-Item $stderr -Force -ErrorAction SilentlyContinue
         if ($wrapperPath) { Remove-Item $wrapperPath -Force -ErrorAction SilentlyContinue }
     }
 }
@@ -741,6 +765,10 @@ function Show-DiagnosticsWindow {
     $openSettingsBtn = New-Button (T 'btn.openSettings') 18 142 225
     $openSettingsBtn.Add_Click({ $dir = Split-Path -Parent $settingsPathBox.Text.Trim(); if (Test-Path $dir) { Start-Process $dir } })
     $diagGroup.Controls.Add($openSettingsBtn)
+
+    $setProxyEnvBtn = New-Button (T 'btn.setProxyEnv') 258 142 225
+    $setProxyEnvBtn.Add_Click({ Run-Command 'set-proxy-env' $true | Out-Null })
+    $diagGroup.Controls.Add($setProxyEnvBtn)
 
     [void]$diagForm.ShowDialog($form)
 }
