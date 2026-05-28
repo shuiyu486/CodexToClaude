@@ -161,6 +161,8 @@ TestCase 'Port process detection ignores stale TCP connections' {
     $source = Get-Content $Script -Raw -Encoding UTF8
     if ($source -notmatch "\.State\s+-eq\s+'Listen'") { throw 'Get-PortProcesses should only treat listening sockets as port owners.' }
     if ($source -notmatch '\.OwningProcess\s+-gt\s+0') { throw 'Get-PortProcesses should ignore Idle pid=0 connections.' }
+    if ($source -notmatch 'netstat\s+-ano\s+-p\s+tcp') { throw 'Get-PortProcesses should fallback to netstat when Get-NetTCPConnection misses a listener.' }
+    if ($source -notmatch [regex]::Escape('LISTENING\s+(\d+)')) { throw 'Get-PortProcesses netstat fallback should only match listening TCP owners.' }
 }
 
 TestCase 'Verify uses a single restart recovery attempt' {
@@ -169,6 +171,17 @@ TestCase 'Verify uses a single restart recovery attempt' {
     if ($source -notmatch 'function\s+Invoke-VerifyWithRecovery') { throw 'Invoke-VerifyWithRecovery function missing.' }
     if ($source -notmatch '\$recoveryAttempted\s*=\s*\$false') { throw 'Verify recovery must track a single attempt.' }
     if ($source -notmatch 'Attempting one restart recovery before retrying verify') { throw 'Verify recovery message missing.' }
+}
+
+TestCase 'Verify reports actionable Cloudflare and auth suspension hints' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
+    if ($source -notmatch 'function\s+Get-RecentProviderFailureHint') { throw 'Provider failure hint helper missing.' }
+    foreach ($pattern in @('Enable JavaScript and cookies to continue', 'cf_chl', 'backend-api/codex/responses', 'auth_unavailable', 'payment_required')) {
+        if ($source -notmatch [regex]::Escape($pattern)) { throw "Provider failure hint missing pattern: $pattern" }
+    }
+    if ($source -notmatch 'Write-RecentProviderFailureHint\s+\$firstHint' -or $source -notmatch 'Write-RecentProviderFailureHint\s+\$finalHint') {
+        throw 'Verify recovery should print provider failure hints before and after restart recovery.'
+    }
 }
 
 TestCase 'Verify exposes optional advanced compatibility checks' {
@@ -343,6 +356,26 @@ TestCase 'ProxyUrl writes explicit proxy-url line' {
         & $Script configure -Port 18318 -ProxyUrl 'http://127.0.0.1:7897' -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
         $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
         if ($config -notmatch 'proxy-url: "http://127\.0\.0\.1:7897"') { throw 'proxy-url line missing.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'CLIProxy config writes Codex User-Agent fallback' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-ua"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18328 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch 'codex-header-defaults:\s*\r?\n\s+user-agent: ''codex_cli_rs/0\.114\.0 \(Mac OS 14\.2\.0; x86_64\) vscode/1\.111\.0''') {
+            throw 'CLIProxy config should include the default Codex User-Agent fallback.'
+        }
+
+        & $Script configure -Port 18328 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -CodexUserAgent "codex 'custom' ua" 2>&1 | Out-Null
+        $config = Get-Content (Join-Path $installDir 'config.yaml') -Raw -Encoding UTF8
+        if ($config -notmatch "user-agent: 'codex ''custom'' ua'") { throw 'Custom Codex User-Agent should be single-quote escaped in YAML.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }
