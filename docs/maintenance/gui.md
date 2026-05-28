@@ -65,6 +65,7 @@ GUI 偏好文件保存到：
 
 - GUI 执行 CLI 命令时，进程运行期间必须增量显示 stdout/stderr。
 - GUI 不得通过 `cmd.exe /c` 拼接用户输入；应通过临时 wrapper 或等价的安全参数传递方式调用 CLI，避免命令注入和命令行泄露 API key。
+- 临时 wrapper 调用 `scripts/CodexToClaude.ps1` 时必须使用 hashtable splatting（`@params`）传递脚本参数；不要用字符串数组 splatting 传 `-Provider` 等命名参数，Windows PowerShell 5.1 会把它们当作位置参数。
 - 设备码登录会等待用户授权，不能等进程退出后才读取输出。
 - GUI 启动和登录后都要刷新 Login status。
 - 登录状态以 `auth-status -Json` 为唯一真源。

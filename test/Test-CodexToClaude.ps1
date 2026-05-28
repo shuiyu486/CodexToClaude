@@ -73,7 +73,8 @@ TestCase 'GUI log box resizes and preserves readable output' {
 TestCase 'GUI command runner avoids shell injection and redacts logs' {
     $source = Get-Content $UiScript -Raw -Encoding UTF8
     if ($source -match "Start-Process\s+-FilePath\s+'cmd\.exe'") { throw 'GUI command runner must not invoke cmd.exe /c with user input.' }
-    if ($source -notmatch 'Build-WrapperScript\s+\$cliOnly') { throw 'GUI should pass CLI args through a generated wrapper script.' }
+    if ($source -notmatch 'Build-WrapperScript\s+\$cliArgs') { throw 'GUI should pass CLI args through a generated wrapper script.' }
+    if ($source -notmatch '\$params\s*=\s*@\{' -or $source -notmatch '&\s+\$scriptLiteral\s+@params') { throw 'GUI wrapper should use hashtable splatting for Windows PowerShell script parameters.' }
     if ($source -notmatch 'RedirectStandardOutput\s+\$stdout' -or $source -notmatch 'RedirectStandardError\s+\$stderr') { throw 'GUI should capture stdout and stderr without cmd.exe redirection.' }
     if ($source -notmatch 'function\s+Redact-UiLogText') { throw 'GUI log redaction helper missing.' }
     if ($source -notmatch 'Normalize-LogText\s+\(Redact-UiLogText\s+\$Text\)') { throw 'Append-Log should redact before writing to the log box.' }

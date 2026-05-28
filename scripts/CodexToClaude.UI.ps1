@@ -525,8 +525,7 @@ function Validate-Inputs([bool]$RequireProxy) {
 }
 
 function Build-Args([string]$Command, [bool]$NeedPortProxy) {
-    $cliArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, $Command)
-    $cliArgs += @('-Provider', $script:CurrentProvider)
+    $cliArgs = @($Command, '-Provider', $script:CurrentProvider)
     $mode = [string]$proxyModeBox.SelectedItem
     if ($NeedPortProxy -or $portBox.Text.Trim() -ne '') { $cliArgs += @('-Port', $portBox.Text.Trim()) }
     if ($NeedPortProxy -or $mode -ne 'Auto') { $cliArgs += @('-ProxyMode', $mode) }
@@ -548,12 +547,27 @@ function ConvertTo-PowerShellSingleQuotedString([string]$Value) {
 
 function Build-WrapperScript([string[]]$CliArgs) {
     $wrapperPath = Join-Path $env:TEMP "ctc-wrap-$([guid]::NewGuid().ToString()).ps1"
-    $argLiterals = @($CliArgs | ForEach-Object { ConvertTo-PowerShellSingleQuotedString $_ })
+    $paramLines = New-Object System.Collections.Generic.List[string]
+    if ($CliArgs.Count -gt 0) {
+        $paramLines.Add("    Command = $(ConvertTo-PowerShellSingleQuotedString $CliArgs[0])")
+    }
+    $switchParams = @('Device', 'Force', 'SkipClaudeStreamCheck', 'CheckTools', 'CheckPromptCaching', 'Json')
+    for ($i = 1; $i -lt $CliArgs.Count; $i++) {
+        $name = $CliArgs[$i].TrimStart('-')
+        if ($switchParams -contains $name) {
+            $paramLines.Add("    $name = `$true")
+        } elseif ($i + 1 -lt $CliArgs.Count) {
+            $i++
+            $paramLines.Add("    $name = $(ConvertTo-PowerShellSingleQuotedString $CliArgs[$i])")
+        }
+    }
     $scriptLiteral = ConvertTo-PowerShellSingleQuotedString $ScriptPath
     $content = @"
 `$ErrorActionPreference = 'Stop'
-`$cliArgs = @($($argLiterals -join ', '))
-& $scriptLiteral @cliArgs *>&1
+`$params = @{
+$($paramLines -join "`r`n")
+}
+& $scriptLiteral @params *>&1
 "@
     [System.IO.File]::WriteAllText($wrapperPath, $content, [System.Text.Encoding]::UTF8)
     return $wrapperPath
@@ -569,10 +583,8 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
     $stderr = Join-Path $env:TEMP "ctc-ui-stderr-$([guid]::NewGuid().ToString()).txt"
     $wrapperPath = $null
     try {
-        $cliFullArgs = Build-Args $Command $NeedPortProxy
-        $scriptIdx = [array]::IndexOf($cliFullArgs, $ScriptPath)
-        $cliOnly = if ($scriptIdx -ge 0) { $cliFullArgs[($scriptIdx + 1)..($cliFullArgs.Count - 1)] } else { @() }
-        $wrapperPath = Build-WrapperScript $cliOnly
+        $cliArgs = Build-Args $Command $NeedPortProxy
+        $wrapperPath = Build-WrapperScript $cliArgs
         $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $wrapperPath) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
         $stdoutPosition = 0
         $stderrPosition = 0
