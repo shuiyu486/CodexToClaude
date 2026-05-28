@@ -76,6 +76,9 @@ TestCase 'GUI command runner avoids shell injection and redacts logs' {
     if ($source -notmatch 'Build-WrapperScript\s+\$cliArgs') { throw 'GUI should pass CLI args through a generated wrapper script.' }
     if ($source -notmatch '\$params\s*=\s*@\{' -or $source -notmatch '&\s+\$scriptLiteral\s+@params') { throw 'GUI wrapper should use hashtable splatting for Windows PowerShell script parameters.' }
     if ($source -notmatch 'RedirectStandardOutput\s+\$stdout' -or $source -notmatch 'RedirectStandardError\s+\$stderr') { throw 'GUI should capture stdout and stderr without cmd.exe redirection.' }
+    if ($source -notmatch '\$wrapperPath\.exitcode' -or $source -notmatch 'WriteAllText\(\$exitCodeLiteral' -or $source -notmatch 'Get-Content\s+\$exitCodePath') { throw 'GUI should persist and read wrapper exit code instead of relying only on Process.ExitCode.' }
+    if ($source -notmatch 'exit\s+`\$exitCode') { throw 'GUI wrapper should exit with the same code it records.' }
+    if ($source -notmatch '`\$exitCode\s*=\s*1\s*\r?\n\s*Write-Error\s+`\$_\.Exception\.Message\s+-ErrorAction\s+Continue') { throw 'GUI wrapper should record failure before writing non-terminating error output.' }
     if ($source -notmatch 'function\s+Redact-UiLogText') { throw 'GUI log redaction helper missing.' }
     if ($source -notmatch 'Normalize-LogText\s+\(Redact-UiLogText\s+\$Text\)') { throw 'Append-Log should redact before writing to the log box.' }
     foreach ($pattern in @('Authorization', 'Bearer', 'access_token', 'refresh_token', 'id_token', 'x-api-key', 'sk-')) {

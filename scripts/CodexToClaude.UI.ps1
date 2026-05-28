@@ -547,6 +547,7 @@ function ConvertTo-PowerShellSingleQuotedString([string]$Value) {
 
 function Build-WrapperScript([string[]]$CliArgs) {
     $wrapperPath = Join-Path $env:TEMP "ctc-wrap-$([guid]::NewGuid().ToString()).ps1"
+    $exitCodePath = "$wrapperPath.exitcode"
     $paramLines = New-Object System.Collections.Generic.List[string]
     if ($CliArgs.Count -gt 0) {
         $paramLines.Add("    Command = $(ConvertTo-PowerShellSingleQuotedString $CliArgs[0])")
@@ -562,12 +563,23 @@ function Build-WrapperScript([string[]]$CliArgs) {
         }
     }
     $scriptLiteral = ConvertTo-PowerShellSingleQuotedString $ScriptPath
+    $exitCodeLiteral = ConvertTo-PowerShellSingleQuotedString $exitCodePath
     $content = @"
 `$ErrorActionPreference = 'Stop'
+`$exitCode = 0
 `$params = @{
 $($paramLines -join "`r`n")
 }
-& $scriptLiteral @params *>&1
+try {
+    & $scriptLiteral @params *>&1
+    if (`$LASTEXITCODE -is [int] -and `$LASTEXITCODE -ne 0) { `$exitCode = `$LASTEXITCODE }
+} catch {
+    `$exitCode = 1
+    Write-Error `$_.Exception.Message -ErrorAction Continue
+} finally {
+    [System.IO.File]::WriteAllText($exitCodeLiteral, [string]`$exitCode, [System.Text.Encoding]::UTF8)
+}
+exit `$exitCode
 "@
     [System.IO.File]::WriteAllText($wrapperPath, $content, [System.Text.Encoding]::UTF8)
     return $wrapperPath
@@ -600,10 +612,19 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
         if ($newOutput) { Append-Log $newOutput.TrimEnd() }
         $newError = Read-NewOutput $stderr ([ref]$stderrPosition)
         if ($newError) { Append-Log $newError.TrimEnd() }
+        $proc.WaitForExit()
+        $proc.Refresh()
+        $exitCodePath = "$wrapperPath.exitcode"
+        $exitCode = $null
+        if (Test-Path $exitCodePath) {
+            $exitText = (Get-Content $exitCodePath -Raw -ErrorAction SilentlyContinue).Trim()
+            if ($exitText -match '^-?\d+$') { $exitCode = [int]$exitText }
+        }
+        if ($null -eq $exitCode) { $exitCode = $proc.ExitCode }
         Append-Log ""
-        Append-Log "ExitCode: $($proc.ExitCode)"
+        Append-Log "ExitCode: $exitCode"
         if ($Command -eq 'login' -or $Command -eq 'install' -or $Command -eq 'configure') { Refresh-AuthStatus }
-        return ($proc.ExitCode -eq 0)
+        return ($exitCode -eq 0)
     } catch {
         Append-Log "ERROR: $($_.Exception.Message)"
         if ($Command -eq 'login') { Append-LoginHelp }
@@ -611,7 +632,10 @@ function Run-Command([string]$Command, [bool]$NeedPortProxy) {
     } finally {
         Remove-Item $stdout -Force -ErrorAction SilentlyContinue
         Remove-Item $stderr -Force -ErrorAction SilentlyContinue
-        if ($wrapperPath) { Remove-Item $wrapperPath -Force -ErrorAction SilentlyContinue }
+        if ($wrapperPath) {
+            Remove-Item "$wrapperPath.exitcode" -Force -ErrorAction SilentlyContinue
+            Remove-Item $wrapperPath -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
