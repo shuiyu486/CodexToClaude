@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.26-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.27-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -308,6 +308,8 @@ A compatible status line plugin can use those headers to show:
 - Reset countdowns.
 
 Recommended companion plugin: [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline), which reads CodexToClaude's forwarded `X-Codex-*` headers and shows the 5h/7d usage limits in your Claude Code status line.
+
+![cc-statusline usage limits](docs/assets/cc-statusline.png)
 
 CodexToClaude only forwards headers; rendering usage limits is handled by your status line plugin.
 

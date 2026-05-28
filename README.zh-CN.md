@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.26-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.27-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -307,6 +307,8 @@ Codex 后端会在 CLIProxyAPI 配置中启用 `passthrough-headers: true`，把
 - 对应 reset 倒计时。
 
 推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
+
+![cc-statusline 用量状态栏效果图](docs/assets/cc-statusline.png)
 
 CodexToClaude 只负责透传 headers，不负责状态栏渲染。
 
