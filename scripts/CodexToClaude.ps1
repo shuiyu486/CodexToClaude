@@ -299,7 +299,15 @@ function Get-EffectiveProxyMode {
     return $ProxyMode
 }
 
+function Get-CodexToClaudeStateDir {
+    return (Join-Path $InstallDir 'codextoclaude-state')
+}
+
 function Get-AutoProxyStatePath {
+    return (Join-Path (Get-CodexToClaudeStateDir) 'watchdog-state.json')
+}
+
+function Get-LegacyAutoProxyStatePath {
     return (Join-Path $InstallDir 'codextoclaude-watchdog-state.json')
 }
 
@@ -309,7 +317,11 @@ function Get-EmptyAutoProxyState {
 
 function Read-AutoProxyState {
     $path = Get-AutoProxyStatePath
-    if (-not (Test-Path $path)) { return Get-EmptyAutoProxyState }
+    if (-not (Test-Path $path)) {
+        $legacyPath = Get-LegacyAutoProxyStatePath
+        if (Test-Path $legacyPath) { $path = $legacyPath }
+        else { return Get-EmptyAutoProxyState }
+    }
     try {
         $state = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
         if (-not $state.PSObject.Properties['Events']) { $state | Add-Member -NotePropertyName Events -NotePropertyValue @() }
@@ -324,6 +336,7 @@ function Read-AutoProxyState {
 
 function Write-AutoProxyState($State) {
     Write-FileUtf8NoBom (Get-AutoProxyStatePath) ((ConvertTo-JsonIndent2 $State 10) + "`n")
+    Remove-Item (Get-LegacyAutoProxyStatePath) -Force -ErrorAction SilentlyContinue
 }
 
 function Add-AutoProxyStaleEvent($State, [string]$Scheme) {

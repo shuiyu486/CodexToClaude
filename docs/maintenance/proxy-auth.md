@@ -28,6 +28,7 @@ CLIProxyAPI config：
 - 文件：`<repo-root>\cli-proxy-api\config.yaml`。
 - 直连时省略 `proxy-url`。
 - `auth-dir` 指向 `$InstallDir`。
+- `auth-dir` 根层只放 Codex OAuth JSON；CodexToClaude 内部状态写入 `$InstallDir\codextoclaude-state\`，避免污染 CLIProxyAPI 的 file-backed credential 扫描。
 - 保留 `passthrough-headers: true`。
 - 保留 bounded retry 相关默认值的诊断可见性。
 - 保留 `payload.filter` 覆盖 `reasoning`、`reasoning.effort`、`thinking`，避免 Claude Code TUI 中文 thinking 流重复字符。
@@ -61,7 +62,7 @@ OCC config：
 CLIProxyAPI：
 
 - OAuth JSON 扫描范围是 `$InstallDir` 根目录下的 `*.json`。
-- 忽略 settings/test/temp 命名文件。
+- 忽略 settings/test/temp 命名文件和 `codextoclaude-*` 内部状态文件。
 - 可用 auth 必须满足：JSON 可解析、`type = codex`、`disabled` 不是 `true`。
 - `login` 支持普通 OAuth 和设备码登录。
 - enabled Codex OAuth JSON 缺少 `websockets` 时补 `true`；已有 `true` / `false` 必须原样保留。

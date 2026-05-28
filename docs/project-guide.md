@@ -74,6 +74,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - Watchdog 不得因快速返回的 5xx 重启 provider，避免切断 Claude Code 流式请求。
 - `ProxyMode Auto` 下可在 HTTP/SOCKS5 间切换并记录状态；显式 `Http` / `Socks5` / `Direct` 不得被覆盖。
 - Watchdog 子进程运行时读取持久化 proxy mode，不要把启动时的 `ProxyMode` 固化到命令行。
+- Watchdog 的 Auto 代理状态写入 `$InstallDir\codextoclaude-state\watchdog-state.json`，不得放在 `auth-dir` 根层；旧版 `$InstallDir\codextoclaude-watchdog-state.json` 只用于迁移读取。
 
 代理、auth JSON 和 settings env 的细节见 `docs/maintenance/proxy-auth.md`。
 

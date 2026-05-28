@@ -198,7 +198,8 @@ TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
     if ($source -notmatch '\(Get-EffectiveProxyMode\)\s+-ne\s+''Auto''') { throw 'Watchdog auto proxy decisions must only apply in effective Auto mode.' }
     if ($source -notmatch '\[datetime\]::TryParse') { throw 'Watchdog should ignore malformed matching log timestamps.' }
     if ($source -notmatch 'Get-CimInstance\s+Win32_Process') { throw 'Watchdog PID handling should validate process identity.' }
-    if ($source -notmatch 'codextoclaude-watchdog-state\.json') { throw 'Watchdog should persist Auto proxy decision state.' }
+    if ($source -notmatch 'codextoclaude-state' -or $source -notmatch 'watchdog-state\.json') { throw 'Watchdog should persist Auto proxy decision state outside auth-dir root.' }
+    if ($source -notmatch 'codextoclaude-watchdog-state\.json') { throw 'Watchdog should migrate the legacy Auto proxy decision state file.' }
     if ($source -notmatch 'codextoclaude-proxy-mode\.txt') { throw 'ProxyMode should be persisted beside provider config.' }
     if ($source -notmatch 'auto-switched proxy' -or $source -notmatch 'auto-kept proxy') { throw 'Watchdog should log switched and kept Auto proxy decisions.' }
     if ($source -notmatch 'Convert-ProxyUrlScheme\s+\$currentProxy\s+\$nextScheme') { throw 'Watchdog should toggle between HTTP and Socks5 proxy schemes.' }

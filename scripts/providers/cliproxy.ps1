@@ -225,7 +225,7 @@ function CLIProxy-GetRiskDiagnostics {
 
 function CLIProxy-GetAuthFiles {
     if (-not (Test-Path $InstallDir)) { return @() }
-    return @(Get-ChildItem $InstallDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'settings|test|temp' })
+    return @(Get-ChildItem $InstallDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'settings|test|temp|^codextoclaude-' })
 }
 
 function CLIProxy-GetAuthStatus {
