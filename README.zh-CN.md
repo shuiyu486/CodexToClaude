@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.25-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.26-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -76,6 +76,7 @@ OpenCode Go 后端：
 | `Port` | Codex: `8317`；OpenCode Go: `3456` | Claude Code 访问的本机端口。 |
 | `ProxyMode` | `Auto` | 自动先按 HTTP 代理写入，必要时尝试 SOCKS5。 |
 | `ProxyUrl` | `127.0.0.1:7897` | `Auto` / `Http` / `Socks5` 必填；直连请选择 `Direct`。 |
+| `CodexUserAgent` | 内置 Codex CLI 兼容 UA | 可选 CLI 参数，用作 Codex OAuth 上游请求的 UA fallback；通常不需要改。 |
 
 无代理用户请明确选择 `Direct`，不要把 `ProxyUrl` 留空当作直连。
 
@@ -290,6 +291,7 @@ CodexToClaude/
 | Codex 登录失败 | 检查代理；重新运行 `install/configure`；尝试 `login -Device`；查看 `cli-proxy-api\logs\main.log`。 |
 | OpenCode Go 提示没有 API Key | 设置环境变量 `OC_GO_CC_API_KEY`，或在 GUI 的 API Key 输入框填写后点击 `配置`。 |
 | `verify` 超时或 TLS 错误 | `ProxyMode Auto` 会尝试从 HTTP 切换到 SOCKS5；Codex auth JSON 缺少 `websockets` 时会自动补 `true`。如果多次 `/v1/messages?beta=true` 仍超时，建议显式使用 `Socks5` 并保持 watchdog 开启。显式 `Socks5` 会固定为 SOCKS5；watchdog 只重启卡住请求，不会切回 HTTP。 |
+| `verify` 报 403 / 已禁止，且错误日志包含 `Enable JavaScript and cookies to continue` | 这是 `chatgpt.com/backend-api/codex/responses` 返回的 Cloudflare challenge。当前配置会写入 `codex-header-defaults.user-agent` 作为 Codex OAuth 上游 UA fallback；如果仍失败，通常是当前网络或代理出口被风控，换一个代理出口或网络后重新执行 `配置` + `重启` + `验证`。 |
 | Claude Code 报 socket closed 或本地代理 502 | 重新执行 `配置`，确保 `NO_PROXY` / `no_proxy` 包含 `127.0.0.1:<Port>`，然后重启 Claude Code。快速上游 5xx 交给 Claude Code 自身重试；watchdog 只处理长时间卡住请求。 |
 | Claude Code 仍访问旧模型 | 先点 `配置`，再点 `重启`，然后重启 Claude Code 客户端。 |
 | 端口被占用 | 换一个端口，并重新执行 `配置` + `重启` + `验证`。 |

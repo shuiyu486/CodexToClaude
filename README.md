@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.25-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.26-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -76,6 +76,7 @@ Decide these values before setup:
 | `Port` | Codex: `8317`; OpenCode Go: `3456` | Local port used by Claude Code. |
 | `ProxyMode` | `Auto` | Starts with HTTP proxy config and may retry with SOCKS5 when needed. |
 | `ProxyUrl` | `127.0.0.1:7897` | Required for `Auto` / `Http` / `Socks5`; choose `Direct` for no proxy. |
+| `CodexUserAgent` | Built-in Codex CLI compatible UA | Optional CLI-only fallback for Codex OAuth upstream requests; normally leave it unchanged. |
 
 If you do not need a proxy, explicitly choose `Direct`; do not leave `ProxyUrl` empty and expect it to mean direct access.
 
@@ -291,6 +292,7 @@ CodexToClaude/
 | Codex login fails | Check your proxy, rerun `install/configure`, try `login -Device`, then inspect `cli-proxy-api\logs\main.log`. |
 | OpenCode Go says no API key | Set `OC_GO_CC_API_KEY`, or enter the key in the GUI and click `Configure`. |
 | `verify` times out or reports TLS errors | `ProxyMode Auto` can retry with SOCKS5; Codex auth JSON is tagged with `websockets: true` when missing. If repeated `/v1/messages?beta=true` calls still timeout, use `Socks5` explicitly and keep the watchdog enabled. Explicit `Socks5` stays pinned; watchdog restarts hung requests but does not switch it back to HTTP. |
+| `verify` returns 403 / forbidden and the error log contains `Enable JavaScript and cookies to continue` | `chatgpt.com/backend-api/codex/responses` returned a Cloudflare challenge. The generated config now writes `codex-header-defaults.user-agent` as a Codex OAuth upstream UA fallback; if it still fails, the current network or proxy exit is likely risk-blocked. Try a different proxy exit or network, then rerun `Configure` + `Restart` + `Verify`. |
 | Claude Code reports socket closed or local proxy 502 | Run `Configure` again so `NO_PROXY` / `no_proxy` includes `127.0.0.1:<Port>`, then restart Claude Code. Fast upstream 5xx responses are retried by Claude Code; the watchdog only restarts on long stuck requests. |
 | Claude Code still uses old models | Click `Configure`, click `Restart`, then restart Claude Code. |
 | Port is already in use | Pick another port, then rerun `Configure` + `Restart` + `Verify`. |

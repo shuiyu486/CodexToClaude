@@ -30,6 +30,7 @@ CLIProxyAPI config：
 - `auth-dir` 指向 `$InstallDir`。
 - `auth-dir` 根层只放 Codex OAuth JSON；CodexToClaude 内部状态写入 `$InstallDir\codextoclaude-state\`，避免污染 CLIProxyAPI 的 file-backed credential 扫描。
 - 保留 `passthrough-headers: true`。
+- 保留 `codex-header-defaults.user-agent`，用于 CLIProxyAPI 的 Codex OAuth 上游 HTTP/websocket 请求 fallback UA，降低空/异常 UA 触发上游风控的概率。
 - 保留 bounded retry 相关默认值的诊断可见性。
 - 保留 `payload.filter` 覆盖 `reasoning`、`reasoning.effort`、`thinking`，避免 Claude Code TUI 中文 thinking 流重复字符。
 
@@ -40,6 +41,12 @@ OCC config：
 - `api_key` 默认写 `${OC_GO_CC_API_KEY}`，避免明文存储。
 - `respect_requested_model` 默认 `true`，按请求 model 名匹配 `models` key；最低要求 oc-go-cc v0.1.5，老版本会忽略。
 - OCC 不支持 `payload.filter`。
+
+## 端口检测
+
+- 首选 `Get-NetTCPConnection` 枚举监听端口。
+- 如果当前会话无法枚举跨环境启动的监听进程，必须 fallback 到 `netstat -ano -p tcp`。
+- `start` / `verify` 看到目标端口已由匹配的 provider 进程监听且健康时，应复用该进程，不要误启动第二个实例造成 bind 冲突。
 
 ## Auto 切换边界
 

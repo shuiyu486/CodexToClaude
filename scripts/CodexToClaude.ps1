@@ -16,6 +16,7 @@ param(
     [string]$ApiKey = 'sk-cliproxy-local-dev-2026',
     [string]$InstallDir,
     [string]$ClaudeSettingsPath = (Join-Path $env:USERPROFILE '.claude\settings.json'),
+    [string]$CodexUserAgent = 'codex_cli_rs/0.114.0 (Mac OS 14.2.0; x86_64) vscode/1.111.0',
     [string]$OpusModel,
     [string]$SonnetModel,
     [string]$HaikuModel,
@@ -213,6 +214,7 @@ function Show-Help {
     Write-Host '  -ProxyMode  Auto|Http|Socks5|Direct. Auto can switch between HTTP and SOCKS5 on timeout-style failures.'
     Write-Host '  -ProxyUrl   Upstream proxy for API access. Example: 127.0.0.1:7897, http://127.0.0.1:7897, or socks5://127.0.0.1:7897'
     Write-Host '              If your network can access upstream directly, explicitly use: -ProxyMode Direct or -ProxyUrl none'
+    Write-Host '  -CodexUserAgent  Upstream Codex OAuth User-Agent fallback written to CLIProxyAPI codex-header-defaults.'
     Write-Host ''
     Write-Host 'Examples:'
     Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyMode Auto -ProxyUrl "127.0.0.1:7897"'
@@ -467,10 +469,23 @@ function Resolve-Port([bool]$RequirePrompt) {
 function Ensure-InstallDir { if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Force $InstallDir | Out-Null } }
 
 function Get-PortProcesses([int]$ResolvedPort) {
+    $ids = @()
     $connections = Get-NetTCPConnection -LocalPort $ResolvedPort -ErrorAction SilentlyContinue |
         Where-Object { $_.State -eq 'Listen' -and $_.OwningProcess -gt 0 }
-    if (-not $connections) { return @() }
-    $ids = $connections | Select-Object -ExpandProperty OwningProcess -Unique
+    if ($connections) {
+        $ids += @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
+    }
+    if ($ids.Count -eq 0) {
+        try {
+            foreach ($line in (& netstat -ano -p tcp 2>$null)) {
+                if ($line -match "^\s*TCP\s+\S+:$ResolvedPort\s+\S+\s+LISTENING\s+(\d+)\s*$") {
+                    $ids += [int]$matches[1]
+                }
+            }
+        } catch { }
+        $ids = @($ids | Select-Object -Unique)
+    }
+    if ($ids.Count -eq 0) { return @() }
     $result = @()
     foreach ($id in $ids) {
         $proc = Get-Process -Id $id -ErrorAction SilentlyContinue
@@ -515,6 +530,50 @@ function Get-SafeLogTail([string]$Path, [int]$TailLines = 30) {
         return Get-SafeTextTail $raw $TailLines
     } catch {
         return ''
+    }
+}
+
+function Get-RecentProviderFailureHint {
+    if ($Provider -ne 'cliproxy') { return '' }
+    $logDir = Split-Path -Parent $LogPath
+    if (-not $logDir -or -not (Test-Path $logDir)) { return '' }
+
+    $files = @(Get-ChildItem $logDir -Filter 'error-v1-messages-*.log' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 3)
+    foreach ($file in $files) {
+        try {
+            $raw = Get-Content $file.FullName -Raw -ErrorAction Stop
+            if ($raw -match 'Enable JavaScript and cookies to continue' -or
+                ($raw -match 'cf_chl' -and $raw -match 'backend-api/codex/responses')) {
+                return "Latest /v1/messages error log ($($file.Name)) shows chatgpt.com returned a Cloudflare JavaScript/cookie challenge. This points to upstream risk blocking on the current network or proxy exit, not a local auth/config/version failure. Try a different proxy exit or network, then run configure/restart/verify again; switching HTTP/SOCKS5 on the same exit may still fail."
+            }
+            if ($raw -match 'Status:\s*403' -and $raw -match 'backend-api/codex/responses') {
+                return "Latest /v1/messages error log ($($file.Name)) shows HTTP 403 from chatgpt.com /backend-api/codex/responses. Check the proxy exit/network reputation or account access before changing local settings."
+            }
+            if ($raw -match 'auth_unavailable:\s*no auth available' -and $raw -match 'providers=codex') {
+                return "Latest /v1/messages error log ($($file.Name)) shows CLIProxyAPI has no usable Codex auth for this model. This can happen after an earlier upstream 403 caused the auth to be suspended. Fix the proxy/network/account cause, then restart CLIProxyAPI to clear the in-process suspension."
+            }
+        } catch { }
+    }
+
+    if ($LogPath -and (Test-Path $LogPath)) {
+        try {
+            $mainTail = Get-Content $LogPath -Tail 2000 -ErrorAction Stop | Out-String
+            if ($mainTail -match 'request error, error status:\s*403' -and
+                $mainTail -match 'Suspended client .*payment_required') {
+                return "Recent provider log shows an upstream 403 followed by CLIProxyAPI suspending the Codex auth as payment_required. If the paired error-v1-messages log contains an HTML/Cloudflare page, change the proxy exit or network; otherwise check account/model entitlement. Restart CLIProxyAPI after the root cause is cleared."
+            }
+        } catch { }
+    }
+    return ''
+}
+
+function Write-RecentProviderFailureHint([string]$Hint) {
+    if (-not $Hint) { return }
+    Write-Warn 'Provider failure hint:'
+    foreach ($line in ($Hint -split "`r?`n")) {
+        if ($line.Trim()) { Write-Warn "  $line" }
     }
 }
 
@@ -1080,6 +1139,8 @@ function Invoke-VerifyWithRecovery([int]$ResolvedPort) {
         if ($recoveryAttempted) { throw }
         $recoveryAttempted = $true
         Write-Warn "Verify failed: $($firstError.Exception.Message)"
+        $firstHint = Get-RecentProviderFailureHint
+        Write-RecentProviderFailureHint $firstHint
         Write-Warn 'Attempting one restart recovery before retrying verify.'
         $stopFunc = "$($PMeta.Prefix)-StopProcess"
         $startFunc = "$($PMeta.Prefix)-StartProcess"
@@ -1094,7 +1155,11 @@ function Invoke-VerifyWithRecovery([int]$ResolvedPort) {
                 Write-Warn 'Recent sanitized provider log tail:'
                 Write-Warn $logTail
             }
-            throw "Verify failed after one restart recovery. First error: $($firstError.Exception.Message). Second error: $($_.Exception.Message)"
+            $finalHint = Get-RecentProviderFailureHint
+            Write-RecentProviderFailureHint $finalHint
+            $failure = "Verify failed after one restart recovery. First error: $($firstError.Exception.Message). Second error: $($_.Exception.Message)"
+            if ($finalHint) { $failure = "$failure Hint: $finalHint" }
+            throw $failure
         }
     }
 }
