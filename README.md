@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.27-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.28-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -229,6 +229,9 @@ Legacy shortcuts are still accepted: `-ProxyUrl none` / `-ProxyUrl direct` are n
 # Full diagnostics
 .\scripts\CodexToClaude.ps1 doctor
 
+# Optional advanced compatibility checks
+.\scripts\CodexToClaude.ps1 verify -CheckToolSearch
+
 # Start / stop service
 .\scripts\CodexToClaude.ps1 start
 .\scripts\CodexToClaude.ps1 stop
@@ -342,6 +345,7 @@ git diff
 # Real environment acceptance check
 .\scripts\CodexToClaude.ps1 restart
 .\scripts\CodexToClaude.ps1 verify
+.\scripts\CodexToClaude.ps1 verify -CheckToolSearch
 ```
 
 For maintainer details, see [`docs/project-guide.md`](docs/project-guide.md).

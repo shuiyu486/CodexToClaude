@@ -80,6 +80,7 @@ TestCase 'GUI command runner avoids shell injection and redacts logs' {
     if ($source -notmatch 'exit\s+`\$exitCode') { throw 'GUI wrapper should exit with the same code it records.' }
     if ($source -notmatch '`\$exitCode\s*=\s*1\s*\r?\n\s*Write-Error\s+`\$_\.Exception\.Message\s+-ErrorAction\s+Continue') { throw 'GUI wrapper should record failure before writing non-terminating error output.' }
     if ($source -notmatch 'function\s+Redact-UiLogText') { throw 'GUI log redaction helper missing.' }
+    if ($source -notmatch 'CheckToolSearch') { throw 'GUI wrapper should recognize -CheckToolSearch as a switch parameter.' }
     if ($source -notmatch 'Normalize-LogText\s+\(Redact-UiLogText\s+\$Text\)') { throw 'Append-Log should redact before writing to the log box.' }
     foreach ($pattern in @('Authorization', 'Bearer', 'access_token', 'refresh_token', 'id_token', 'x-api-key', 'sk-')) {
         if ($source -notmatch [regex]::Escape($pattern)) { throw "GUI redaction missing pattern: $pattern" }
@@ -188,8 +189,11 @@ TestCase 'Verify exposes optional advanced compatibility checks' {
     $source = Get-Content $Script -Raw -Encoding UTF8
     if ($source -notmatch '\[switch\]\$CheckTools') { throw 'verify should expose -CheckTools.' }
     if ($source -notmatch '\[switch\]\$CheckPromptCaching') { throw 'verify should expose -CheckPromptCaching.' }
+    if ($source -notmatch '\[switch\]\$CheckToolSearch') { throw 'verify should expose -CheckToolSearch.' }
     if ($source -notmatch 'function\s+Invoke-ToolUseVerify') { throw 'Tool-use verify helper missing.' }
     if ($source -notmatch 'function\s+Invoke-PromptCachingVerify') { throw 'Prompt caching verify helper missing.' }
+    if ($source -notmatch 'function\s+Invoke-ToolSearchVerify') { throw 'ToolSearch verify helper missing.' }
+    if ($source -notmatch 'if \(\$CheckToolSearch\) \{ Invoke-ToolSearchVerify \$ResolvedPort \}') { throw 'Advanced verify should run ToolSearch only when requested.' }
     if ($source -notmatch 'function\s+Verify-Setup\(\[int\]\$ResolvedPort\)\s*\{\s*Invoke-VerifyWithRecovery\s+\$ResolvedPort\s*Invoke-AdvancedVerify\s+\$ResolvedPort') { throw 'Verify setup should run advanced checks outside restart recovery.' }
 }
 
@@ -304,6 +308,7 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($config -match '(?m)^proxy-url:') { throw 'proxy-url should be omitted for none.' }
         $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18317') { throw 'Claude base URL mismatch.' }
+        if ($settings.env.ENABLE_TOOL_SEARCH -ne 'true') { throw 'Claude settings should enable ToolSearch by default.' }
         if ($settings.env.NO_PROXY -notmatch '127\.0\.0\.1' -or $settings.env.NO_PROXY -notmatch 'localhost' -or $settings.env.NO_PROXY -notmatch '127\.0\.0\.1:18317') { throw 'Claude settings should bypass proxies for the local provider URL.' }
         if ($settings.env.no_proxy -ne $settings.env.NO_PROXY) { throw 'Claude settings should write both NO_PROXY and no_proxy.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
@@ -332,7 +337,7 @@ TestCase 'Configure preserves non-env Claude settings' {
             statusLine = [pscustomobject]@{ type = 'command'; command = 'ctc-status' }
             permissions = [pscustomobject]@{ allow = @('Bash(git status:*)') }
             language = 'zh-CN'
-            env = [pscustomobject]@{ EXISTING_KEY = 'keep-me' }
+            env = [pscustomobject]@{ EXISTING_KEY = 'keep-me'; ENABLE_TOOL_SEARCH = 'false' }
         } | ConvertTo-Json -Depth 10
         [System.IO.File]::WriteAllText($settingsPath, $initial, [System.Text.Encoding]::UTF8)
         & $Script configure -Port 18327 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
@@ -341,6 +346,7 @@ TestCase 'Configure preserves non-env Claude settings' {
         if (@($settings.permissions.allow)[0] -ne 'Bash(git status:*)') { throw 'permissions should be preserved.' }
         if ($settings.language -ne 'zh-CN') { throw 'language should be preserved.' }
         if ($settings.env.EXISTING_KEY -ne 'keep-me') { throw 'existing env values should be preserved.' }
+        if ($settings.env.ENABLE_TOOL_SEARCH -ne 'true') { throw 'ToolSearch should be enabled by configure.' }
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18327') { throw 'Claude base URL should be updated.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue

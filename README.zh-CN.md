@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.27-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.28-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -229,6 +229,9 @@ $env:OC_GO_CC_API_KEY = "你的 OpenCode Go API Key"
 # 完整诊断
 .\scripts\CodexToClaude.ps1 doctor
 
+# 可选高级兼容检查
+.\scripts\CodexToClaude.ps1 verify -CheckToolSearch
+
 # 启停服务
 .\scripts\CodexToClaude.ps1 start
 .\scripts\CodexToClaude.ps1 stop
@@ -341,6 +344,7 @@ git diff
 # 真实环境验收
 .\scripts\CodexToClaude.ps1 restart
 .\scripts\CodexToClaude.ps1 verify
+.\scripts\CodexToClaude.ps1 verify -CheckToolSearch
 ```
 
 更详细的维护约定见 [`docs/project-guide.md`](docs/project-guide.md)。

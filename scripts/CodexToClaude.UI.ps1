@@ -552,7 +552,7 @@ function Build-WrapperScript([string[]]$CliArgs) {
     if ($CliArgs.Count -gt 0) {
         $paramLines.Add("    Command = $(ConvertTo-PowerShellSingleQuotedString $CliArgs[0])")
     }
-    $switchParams = @('Device', 'Force', 'SkipClaudeStreamCheck', 'CheckTools', 'CheckPromptCaching', 'Json')
+    $switchParams = @('Device', 'Force', 'SkipClaudeStreamCheck', 'CheckTools', 'CheckPromptCaching', 'CheckToolSearch', 'Json')
     for ($i = 1; $i -lt $CliArgs.Count; $i++) {
         $name = $CliArgs[$i].TrimStart('-')
         if ($switchParams -contains $name) {

@@ -25,6 +25,7 @@ param(
     [switch]$SkipClaudeStreamCheck,
     [switch]$CheckTools,
     [switch]$CheckPromptCaching,
+    [switch]$CheckToolSearch,
     [switch]$Json,
     [int]$WatchdogTimeoutSeconds = 60
 )
@@ -196,7 +197,7 @@ function Show-Help {
     Write-Host '  restart      Stop then start and wait for readiness'
     Write-Host '  status       Show local setup status for current provider'
     Write-Host '  auth-status  Show authentication status for current provider'
-    Write-Host '  verify       Verify /v1/models and /v1/messages; add -CheckTools or -CheckPromptCaching for advanced checks'
+    Write-Host '  verify       Verify /v1/models and /v1/messages; add -CheckTools, -CheckPromptCaching, or -CheckToolSearch for advanced checks'
     Write-Host '  doctor       Run status and verify'
     Write-Host '  project-version   Show CodexToClaude VERSION and git status'
     Write-Host '  project-update    Safely update CodexToClaude with git pull --ff-only'
@@ -840,6 +841,7 @@ function Configure-Claude([int]$ResolvedPort) {
     }
     Set-JsonProperty $settings.env 'ANTHROPIC_AUTH_TOKEN' $ApiKey
     Set-JsonProperty $settings.env 'ANTHROPIC_BASE_URL' "http://127.0.0.1:$ResolvedPort"
+    Set-JsonProperty $settings.env 'ENABLE_TOOL_SEARCH' 'true'
     $noProxy = Get-LocalNoProxyValue $ResolvedPort
     Set-JsonProperty $settings.env 'NO_PROXY' $noProxy
     Set-JsonProperty $settings.env 'no_proxy' $noProxy
@@ -922,6 +924,90 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
     if ($textCount -eq 0) { throw 'Claude stream-json did not contain text_delta.' }
     if ($thinkingCount -eq 0) { Write-OK "Claude stream-json check passed: thinking_delta_count=0, text_delta_count=$textCount" }
     else { Write-OK "Claude stream-json text check passed: text_delta_count=$textCount" }
+}
+
+function Invoke-ToolSearchVerify([int]$ResolvedPort) {
+    Write-Step 'Verifying Claude Code ToolSearch compatibility'
+    $body = @{
+        model = $SonnetModel
+        max_tokens = 256
+        messages = @(
+            @{ role = 'user'; content = 'Find a weather tool.' },
+            @{ role = 'assistant'; content = @(@{ type = 'tool_use'; id = 'toolu_search_001'; name = 'ctc_tool_search'; input = @{ query = 'weather' } }) },
+            @{ role = 'user'; content = @(
+                @{ type = 'tool_result'; tool_use_id = 'toolu_search_001'; content = @(@{ type = 'tool_reference'; tool_name = 'ctc_get_weather' }) },
+                @{ type = 'text'; text = 'Use the discovered weather tool for San Francisco.' }
+            ) }
+        )
+        tools = @(
+            @{
+                name = 'ctc_tool_search'
+                description = 'Searches for tools by keyword.'
+                input_schema = @{ type = 'object'; properties = @{ query = @{ type = 'string' } }; required = @('query') }
+            },
+            @{
+                name = 'ctc_get_weather'
+                description = 'Gets the weather at a specific location.'
+                input_schema = @{ type = 'object'; properties = @{ location = @{ type = 'string' } }; required = @('location') }
+                defer_loading = $true
+            }
+        )
+    }
+    $response = Invoke-AnthropicMessageBody $ResolvedPort $body $null
+    $toolUse = Get-ContentBlockByType $response 'tool_use'
+    if (-not $toolUse -or $toolUse.name -ne 'ctc_get_weather') { throw 'ToolSearch check did not receive a tool_use for the referenced deferred tool.' }
+
+    $claude = Get-Command claude.exe -ErrorAction SilentlyContinue
+    if (-not $claude) {
+        throw 'claude.exe not found; cannot run ToolSearch check.'
+    }
+
+    $origToken = $env:ANTHROPIC_AUTH_TOKEN
+    $origUrl = $env:ANTHROPIC_BASE_URL
+    $origModel = $env:ANTHROPIC_DEFAULT_SONNET_MODEL
+    $origToolSearch = $env:ENABLE_TOOL_SEARCH
+    $env:ANTHROPIC_AUTH_TOKEN = $ApiKey
+    $env:ANTHROPIC_BASE_URL = "http://127.0.0.1:$ResolvedPort"
+    $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $SonnetModel
+    $env:ENABLE_TOOL_SEARCH = 'true'
+    $stdout = Join-Path $env:TEMP "ctc-toolsearch-stdout-$([guid]::NewGuid().ToString()).txt"
+    $stderr = Join-Path $env:TEMP "ctc-toolsearch-stderr-$([guid]::NewGuid().ToString()).txt"
+    $stdin = Join-Path $env:TEMP "ctc-toolsearch-stdin-$([guid]::NewGuid().ToString()).txt"
+    $streamTimeoutSeconds = 60
+    $proc = $null
+    try {
+        [System.IO.File]::WriteAllText($stdin, '', [System.Text.Encoding]::UTF8)
+        $proc = Start-Process -FilePath $claude.Source -ArgumentList @('-p', 'Say OK in one word.', '--output-format=stream-json', '--include-partial-messages', '--verbose') -NoNewWindow -PassThru -RedirectStandardInput $stdin -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $deadline = (Get-Date).AddSeconds($streamTimeoutSeconds)
+        while (-not $proc.HasExited -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+            try { $proc.Refresh() } catch { }
+        }
+        if (-not $proc.HasExited) {
+            try { Stop-Process -Id $proc.Id -Force -Confirm:$false } catch { }
+            $errTail = ''
+            if (Test-Path $stderr) { $errTail = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 20 }
+            throw "ToolSearch check timed out after 60 seconds. Local proxy may not support ENABLE_TOOL_SEARCH=true. $errTail"
+        }
+        try { $proc.WaitForExit(1000) | Out-Null; $proc.Refresh() } catch { }
+        $output = ''
+        if (Test-Path $stdout) { $output += Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
+        if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
+            $err = ''
+            if (Test-Path $stderr) { $err = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30 }
+            throw "claude.exe exited with code $($proc.ExitCode) while ENABLE_TOOL_SEARCH=true. $err"
+        }
+    } finally {
+        $env:ANTHROPIC_AUTH_TOKEN = $origToken
+        $env:ANTHROPIC_BASE_URL = $origUrl
+        $env:ANTHROPIC_DEFAULT_SONNET_MODEL = $origModel
+        $env:ENABLE_TOOL_SEARCH = $origToolSearch
+        Remove-Item $stdout, $stderr, $stdin -Force -ErrorAction SilentlyContinue
+    }
+    $textCount = ([regex]::Matches($output, 'text_delta')).Count
+    $toolUseCount = ([regex]::Matches($output, '"type":"tool_use"')).Count
+    if ($textCount -eq 0 -and $toolUseCount -eq 0) { throw 'ToolSearch check did not observe text_delta or tool_use output.' }
+    Write-OK "ToolSearch check passed with ENABLE_TOOL_SEARCH=true: text_delta_count=$textCount, tool_use_count=$toolUseCount"
 }
 
 function New-AnthropicHeaders([hashtable]$ExtraHeaders) {
@@ -1020,6 +1106,7 @@ function Invoke-PromptCachingVerify([int]$ResolvedPort) {
 function Invoke-AdvancedVerify([int]$ResolvedPort) {
     if ($CheckTools) { Invoke-ToolUseVerify $ResolvedPort }
     if ($CheckPromptCaching) { Invoke-PromptCachingVerify $ResolvedPort }
+    if ($CheckToolSearch) { Invoke-ToolSearchVerify $ResolvedPort }
 }
 
 function Get-ProviderRiskDiagnostics {

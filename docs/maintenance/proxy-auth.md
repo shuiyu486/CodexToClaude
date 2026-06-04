@@ -99,7 +99,7 @@ OCC：
 - `NO_PROXY` / `no_proxy` 必须包含 `127.0.0.1`、`localhost`、`::1`，以及当前 provider 的 `127.0.0.1:<Port>` / `localhost:<Port>`。
 - CLIProxy 后端移除 `CLAUDE_CODE_EFFORT_LEVEL`，配合 `payload.filter` 过滤 reasoning/thinking 参数。
 - OCC 后端设置 `CLAUDE_CODE_EFFORT_LEVEL = "max"`。
-- 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；除非 provider 已验证支持 `tool_reference` blocks，否则不要设置 `ENABLE_TOOL_SEARCH=true`。
+- 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；CodexToClaude `configure` 必须显式写入 `ENABLE_TOOL_SEARCH = "true"`，并用 `verify -CheckToolSearch` 作为显式 opt-in 兼容性检查。
 
 ## 命令行代理环境变量
 
@@ -122,6 +122,7 @@ OCC：
 - `ANTHROPIC_DEFAULT_OPUS_MODEL_NAME`
 - `ANTHROPIC_DEFAULT_SONNET_MODEL_NAME`
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME`
+- `ENABLE_TOOL_SEARCH`
 - `CLAUDE_CODE_EFFORT_LEVEL`
 
 ## 验证要求
@@ -143,6 +144,7 @@ OCC：
 高级兼容检查必须保持显式 opt-in，避免普通 `verify` 因 provider 不支持高级 Anthropic 功能而失败：
 
 - `verify -CheckTools` 检查 `tools`、`tool_use`、`tool_result` 基本链路。
+- `verify -CheckToolSearch` 检查 `tool_reference` 指向 deferred tool 的链路，并确认 Claude Code 在 `ENABLE_TOOL_SEARCH=true` 下能通过当前 provider 完成 stream-json smoke。
 - `verify -CheckPromptCaching` 检查 prompt caching 的 `usage` 字段是否保留。
 
 提交前检查：
