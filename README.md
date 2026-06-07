@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.29-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.30-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -39,6 +39,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🚀 **Guided GUI setup** — Double-click `CodexToClaude-GUI.cmd` and follow the wizard: install, login, configure, restart, verify.
 - 🔀 **Two model sources** — Switch between Codex and OpenCode Go from one UI without duplicating setup logic.
 - 🧩 **Claude Code auto-config** — Merges only target `env` values into `~/.claude/settings.json`, preserving statusLine, permissions, language, and other settings.
+- 🗜️ **Optional auto-compact thresholds** — `configure` can explicitly write or remove Claude Code auto-compact env overrides for proxy models whose context window is misdetected.
 - 📊 **Usage limits in status line** — Recommended with [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline), which reads CodexToClaude's forwarded `X-Codex-*` headers and shows 5h/7d usage limits.
 - 🌐 **Proxy modes built in** — Supports `Auto`, `Http`, `Socks5`, and `Direct`; `Auto` can switch between HTTP and SOCKS5 after timeout-style failures.
 - 🧪 **End-to-end verification** — Checks `/v1/models`, `/v1/messages`, and Claude Code stream-json.
@@ -77,6 +78,7 @@ Decide these values before setup:
 | `ProxyMode` | `Auto` | Starts with HTTP proxy config and may retry with SOCKS5 when needed. |
 | `ProxyUrl` | `127.0.0.1:7897` | Required for `Auto` / `Http` / `Socks5`; choose `Direct` for no proxy. |
 | `CodexUserAgent` | Built-in Codex CLI compatible UA | Optional CLI-only fallback for Codex OAuth upstream requests; normally leave it unchanged. |
+| `AutoCompact` | `Unset` | Optional CLI/GUI setting. `Unset` leaves existing Claude Code auto-compact env untouched, `Enabled` writes `Window` + `Pct`, and `Disabled` removes those overrides. |
 
 If you do not need a proxy, explicitly choose `Direct`; do not leave `ProxyUrl` empty and expect it to mean direct access.
 
@@ -218,6 +220,16 @@ $env:OC_GO_CC_API_KEY = "your OpenCode Go API key"
 ```
 
 Legacy shortcuts are still accepted: `-ProxyUrl none` / `-ProxyUrl direct` are normalized to direct mode.
+
+### Optional Claude Code auto-compact thresholds
+
+If Claude Code misdetects a proxy model's context window, explicitly configure auto-compact overrides during `configure`:
+
+```powershell
+.\scripts\CodexToClaude.ps1 configure -Provider cliproxy -Port 8317 -ProxyMode Auto -ProxyUrl "127.0.0.1:7897" -AutoCompact Enabled -AutoCompactWindow 120000 -AutoCompactPct 70
+```
+
+`Enabled` requires both values. `Disabled` removes `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`; `Unset` leaves any existing values untouched. The actual compact timing is still approximate and controlled by Claude Code.
 
 ## ⚙️ Common commands
 

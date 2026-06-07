@@ -100,6 +100,8 @@ OCC：
 - CLIProxy 后端移除 `CLAUDE_CODE_EFFORT_LEVEL`，不写死 max，让 Claude Code 请求中的 reasoning/thinking/effort 语义透传给 CLIProxyAPI 和上游。
 - OCC 后端设置 `CLAUDE_CODE_EFFORT_LEVEL = "max"`。
 - 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；CodexToClaude `configure` 必须显式写入 `ENABLE_TOOL_SEARCH = "true"`，并用 `verify -CheckToolSearch` 作为显式 opt-in 兼容性检查。
+- 自动压缩阈值是显式 opt-in：`AutoCompact Unset` 或未传参数时不新增、不删除、不覆盖 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` / `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`；`Enabled` 必须同时提供 window 和 pct 并写入字符串 env；`Disabled` 删除这两个 env。
+- 自动压缩阈值只影响 Claude Code 的近似触发计算，不承诺精确 token 点触发。
 
 ## 命令行代理环境变量
 
@@ -124,6 +126,8 @@ OCC：
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME`
 - `ENABLE_TOOL_SEARCH`
 - `CLAUDE_CODE_EFFORT_LEVEL`
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW`
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
 
 ## 验证要求
 
@@ -140,6 +144,7 @@ OCC：
 - 只改目标 env 键。
 - 保留非 env 配置。
 - 不引入 shell profile 依赖。
+- 自动压缩三态覆盖：Unset/未传不触碰已有 env，Enabled 写入两个 env，Disabled 删除两个 env。
 
 高级兼容检查必须保持显式 opt-in，避免普通 `verify` 因 provider 不支持高级 Anthropic 功能而失败：
 

@@ -36,6 +36,8 @@ Install -> Login -> Configure -> Restart -> Verify
 - `ProxyMode` 支持 `Auto`、`Http`、`Socks5`、`Direct`。
 - `Auto` / `Http` / `Socks5` 必须要求代理地址非空。
 - `Direct` 模式应禁用或忽略代理地址输入。
+- 自动压缩阈值属于 Claude Code settings env，GUI 只收集 `Unset` / `Enabled` / `Disabled` 和 window/pct 参数，并透传给 CLI `configure`；不得在 GUI 中直接写 settings。
+- `Unset` 不传自动压缩参数，保持已有 settings；`Enabled` 必须校验 window/pct；`Disabled` 只传禁用/清理意图，不传残留 window/pct。
 - 代理、认证和 settings 合并细节见 `proxy-auth.md`。
 
 ## 语言与文案
@@ -94,6 +96,7 @@ GUI 修改后至少确认：
 - `scripts/CodexToClaude.UI.ps1` 可被 PowerShell parser 解析。
 - `CodexToClaude-GUI.cmd` 存在。
 - 中英文切换后主要标签、按钮和弹窗文案可读。
+- 自动压缩三态控件在 Unset/Enabled/Disabled 之间切换正确，Enabled 缺 window/pct 时阻止 Configure。
 - 快速向导仍按 `Install -> Login -> Configure -> Restart -> Verify` 调用 CLI。
 - OCC 后端隐藏 Login 步骤并保留 API key 输入路径。
 - 高级管理按钮只调用 CLI 子命令，不直接执行 git、下载、替换 exe 或写 settings。

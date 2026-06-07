@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.29-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.30-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -39,6 +39,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 🚀 **GUI 向导式安装** — 双击 `CodexToClaude-GUI.cmd`，按向导完成安装、登录、配置、重启、验证。
 - 🔀 **双模型来源** — Codex / OpenCode Go 一键切换，不复制业务逻辑。
 - 🧩 **自动配置 Claude Code** — 只合并更新 `~/.claude/settings.json` 的目标 `env`，保留 statusLine、permissions、language 等设置。
+- 🗜️ **可选自动压缩阈值** — `configure` 可显式写入或删除 Claude Code 自动压缩 env override，用于代理模型上下文窗口被误判的场景。
 - 📊 **状态栏用量显示** — 推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
 - 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在超时类故障后在 HTTP 和 SOCKS5 之间切换。
 - 🧪 **端到端验证** — 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
@@ -77,6 +78,7 @@ OpenCode Go 后端：
 | `ProxyMode` | `Auto` | 自动先按 HTTP 代理写入，必要时尝试 SOCKS5。 |
 | `ProxyUrl` | `127.0.0.1:7897` | `Auto` / `Http` / `Socks5` 必填；直连请选择 `Direct`。 |
 | `CodexUserAgent` | 内置 Codex CLI 兼容 UA | 可选 CLI 参数，用作 Codex OAuth 上游请求的 UA fallback；通常不需要改。 |
+| `AutoCompact` | `Unset` | 可选 CLI/GUI 设置。`Unset` 不触碰现有 Claude Code 自动压缩 env，`Enabled` 写入 `Window` + `Pct`，`Disabled` 删除这些 override。 |
 
 无代理用户请明确选择 `Direct`，不要把 `ProxyUrl` 留空当作直连。
 
@@ -218,6 +220,16 @@ $env:OC_GO_CC_API_KEY = "你的 OpenCode Go API Key"
 ```
 
 兼容旧写法：`-ProxyUrl none` / `-ProxyUrl direct` 会被归一化为直连。
+
+### 可选 Claude Code 自动压缩阈值
+
+如果 Claude Code 误判代理模型的上下文窗口，可以在 `configure` 时显式配置自动压缩 override：
+
+```powershell
+.\scripts\CodexToClaude.ps1 configure -Provider cliproxy -Port 8317 -ProxyMode Auto -ProxyUrl "127.0.0.1:7897" -AutoCompact Enabled -AutoCompactWindow 120000 -AutoCompactPct 70
+```
+
+`Enabled` 必须同时提供两个值。`Disabled` 会删除 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 和 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`；`Unset` 不触碰已有值。实际压缩触发时机仍由 Claude Code 控制，只能视为近似阈值。
 
 ## ⚙️ 常用命令
 

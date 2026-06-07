@@ -304,6 +304,19 @@ TestCase 'GUI exposes set-proxy-env diagnostics action' {
     if ($source -notmatch 'Run-Command ''set-proxy-env'' \$true') { throw 'GUI should call set-proxy-env with current port/proxy fields.' }
 }
 
+TestCase 'GUI exposes auto compact configure options' {
+    $source = Get-Content $UiScript -Raw -Encoding UTF8
+    foreach ($key in @('field.autoCompact', 'field.autoCompactWindow', 'field.autoCompactPct', 'hint.autoCompact', 'dialog.autoCompactRequired', 'dialog.autoCompactInvalid')) {
+        if ($source -notmatch [regex]::Escape($key)) { throw "GUI auto compact text key missing: $key" }
+    }
+    foreach ($name in @('autoCompactBox', 'autoCompactWindowBox', 'autoCompactPctBox', 'Update-AutoCompactState', 'Validate-AutoCompactInputs')) {
+        if ($source -notmatch [regex]::Escape($name)) { throw "GUI auto compact control or helper missing: $name" }
+    }
+    if ($source -notmatch [regex]::Escape('$Command -eq ''configure''') -or $source -notmatch "'-AutoCompact'") { throw 'GUI should pass auto compact args only through configure.' }
+    if ($source -notmatch [regex]::Escape('$autoCompact -ne ''Unset''')) { throw 'GUI should omit auto compact CLI args when unset.' }
+    if ($source -notmatch "'-AutoCompactWindow'" -or $source -notmatch "'-AutoCompactPct'") { throw 'GUI should pass auto compact window and pct when enabled.' }
+}
+
 TestCase 'ProxyUrl none configure writes no proxy-url line' {
     $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')"
     New-Item -ItemType Directory $fakeHome -Force | Out-Null
@@ -321,6 +334,8 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }
+        if ($settings.env.PSObject.Properties['CLAUDE_CODE_AUTO_COMPACT_WINDOW']) { throw 'Auto compact window env should not be created by default.' }
+        if ($settings.env.PSObject.Properties['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) { throw 'Auto compact pct env should not be created by default.' }
         if ($settings.env.PSObject.Properties['CLAUDE_CODE_EFFORT_LEVEL']) { throw 'CLIProxy should not force Claude effort level.' }
         if ($config -notmatch '(?m)^passthrough-headers:\s*true\r?$') { throw 'CLIProxy should forward upstream response headers.' }
         if ($config -notmatch '(?m)^request-retry:\s*1\r?$') { throw 'CLIProxy request retry should be bounded.' }
@@ -346,7 +361,13 @@ TestCase 'Configure preserves non-env Claude settings' {
             statusLine = [pscustomobject]@{ type = 'command'; command = 'ctc-status' }
             permissions = [pscustomobject]@{ allow = @('Bash(git status:*)') }
             language = 'zh-CN'
-            env = [pscustomobject]@{ EXISTING_KEY = 'keep-me'; ENABLE_TOOL_SEARCH = 'false'; CLAUDE_CODE_EFFORT_LEVEL = 'max' }
+            env = [pscustomobject]@{
+                EXISTING_KEY = 'keep-me'
+                ENABLE_TOOL_SEARCH = 'false'
+                CLAUDE_CODE_EFFORT_LEVEL = 'max'
+                CLAUDE_CODE_AUTO_COMPACT_WINDOW = '111111'
+                CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = '66'
+            }
         } | ConvertTo-Json -Depth 10
         [System.IO.File]::WriteAllText($settingsPath, $initial, [System.Text.Encoding]::UTF8)
         & $Script configure -Port 18327 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
@@ -355,9 +376,91 @@ TestCase 'Configure preserves non-env Claude settings' {
         if (@($settings.permissions.allow)[0] -ne 'Bash(git status:*)') { throw 'permissions should be preserved.' }
         if ($settings.language -ne 'zh-CN') { throw 'language should be preserved.' }
         if ($settings.env.EXISTING_KEY -ne 'keep-me') { throw 'existing env values should be preserved.' }
+        if ($settings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW -ne '111111') { throw 'Auto compact window env should be preserved when unset.' }
+        if ($settings.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -ne '66') { throw 'Auto compact pct env should be preserved when unset.' }
         if ($settings.env.PSObject.Properties['CLAUDE_CODE_EFFORT_LEVEL']) { throw 'CLIProxy configure should remove stale Claude effort env.' }
         if ($settings.env.ENABLE_TOOL_SEARCH -ne 'true') { throw 'ToolSearch should be enabled by configure.' }
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18327') { throw 'Claude base URL should be updated.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'AutoCompact Enabled writes Claude settings env' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-autocompact-enabled"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        & $Script configure -Port 18329 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompact Enabled -AutoCompactWindow 120000 -AutoCompactPct 70 2>&1 | Out-Null
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW -ne '120000') { throw 'Auto compact window env mismatch.' }
+        if ($settings.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -ne '70') { throw 'Auto compact pct env mismatch.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'AutoCompact Disabled removes Claude settings env' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-autocompact-disabled"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    New-Item -ItemType Directory (Split-Path -Parent $settingsPath) -Force | Out-Null
+    try {
+        $initial = [pscustomobject]@{
+            env = [pscustomobject]@{
+                EXISTING_KEY = 'keep-me'
+                CLAUDE_CODE_AUTO_COMPACT_WINDOW = '120000'
+                CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = '70'
+            }
+        } | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($settingsPath, $initial, [System.Text.Encoding]::UTF8)
+        & $Script configure -Port 18330 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompact Disabled 2>&1 | Out-Null
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($settings.env.EXISTING_KEY -ne 'keep-me') { throw 'Disabled should preserve unrelated env values.' }
+        if ($settings.env.PSObject.Properties['CLAUDE_CODE_AUTO_COMPACT_WINDOW']) { throw 'Disabled should remove auto compact window env.' }
+        if ($settings.env.PSObject.Properties['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) { throw 'Disabled should remove auto compact pct env.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'AutoCompact Enabled requires window and pct' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-autocompact-required"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        $failed = $false
+        try { & $Script configure -Port 18331 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompact Enabled -AutoCompactWindow 120000 2>&1 | Out-Null } catch { $failed = $true; if ($_.Exception.Message -notmatch 'requires -AutoCompactWindow and -AutoCompactPct') { throw } }
+        if (-not $failed) { throw 'AutoCompact Enabled should fail without pct.' }
+
+        $failed = $false
+        try { & $Script configure -Port 18331 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompact Enabled -AutoCompactPct 70 2>&1 | Out-Null } catch { $failed = $true; if ($_.Exception.Message -notmatch 'requires -AutoCompactWindow and -AutoCompactPct') { throw } }
+        if (-not $failed) { throw 'AutoCompact Enabled should fail without window.' }
+    } finally {
+        Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+TestCase 'AutoCompact validates window and pct range' {
+    $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-autocompact-range"
+    New-Item -ItemType Directory $fakeHome -Force | Out-Null
+    $installDir = Join-Path $fakeHome '.cli-proxy-api'
+    $settingsPath = Join-Path $fakeHome '.claude\settings.json'
+    try {
+        $failed = $false
+        try { & $Script configure -Port 18332 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompact Enabled -AutoCompactWindow 0 -AutoCompactPct 70 2>&1 | Out-Null } catch { $failed = $true; if ($_.Exception.Message -notmatch 'AutoCompactWindow must be greater than 0') { throw } }
+        if (-not $failed) { throw 'AutoCompact Enabled should reject window=0.' }
+
+        $failed = $false
+        try { & $Script configure -Port 18332 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompact Enabled -AutoCompactWindow 120000 -AutoCompactPct 101 2>&1 | Out-Null } catch { $failed = $true; if ($_.Exception.Message -notmatch 'AutoCompactPct must be in range 1-100') { throw } }
+        if (-not $failed) { throw 'AutoCompact Enabled should reject pct outside 1-100.' }
+
+        $failed = $false
+        try { & $Script configure -Port 18332 -ProxyMode Direct -InstallDir $installDir -ClaudeSettingsPath $settingsPath -AutoCompactWindow 120000 -AutoCompactPct 70 2>&1 | Out-Null } catch { $failed = $true; if ($_.Exception.Message -notmatch 'can only be used with -AutoCompact Enabled') { throw } }
+        if (-not $failed) { throw 'AutoCompact window/pct should require -AutoCompact Enabled.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

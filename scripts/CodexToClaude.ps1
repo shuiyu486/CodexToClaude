@@ -20,6 +20,10 @@ param(
     [string]$OpusModel,
     [string]$SonnetModel,
     [string]$HaikuModel,
+    [ValidateSet('Unset', 'Enabled', 'Disabled')]
+    [string]$AutoCompact = 'Unset',
+    [int]$AutoCompactWindow,
+    [int]$AutoCompactPct,
     [switch]$Device,
     [switch]$Force,
     [switch]$SkipClaudeStreamCheck,
@@ -34,6 +38,8 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ProxyUrlProvided = $PSBoundParameters.ContainsKey('ProxyUrl')
 $ProxyModeProvided = $PSBoundParameters.ContainsKey('ProxyMode')
+$AutoCompactWindowProvided = $PSBoundParameters.ContainsKey('AutoCompactWindow')
+$AutoCompactPctProvided = $PSBoundParameters.ContainsKey('AutoCompactPct')
 
 # ============================================================
 # Provider metadata & path initialization
@@ -216,10 +222,15 @@ function Show-Help {
     Write-Host '  -ProxyUrl   Upstream proxy for API access. Example: 127.0.0.1:7897, http://127.0.0.1:7897, or socks5://127.0.0.1:7897'
     Write-Host '              If your network can access upstream directly, explicitly use: -ProxyMode Direct or -ProxyUrl none'
     Write-Host '  -CodexUserAgent  Upstream Codex OAuth User-Agent fallback written to CLIProxyAPI codex-header-defaults.'
+    Write-Host '  -AutoCompact Unset|Enabled|Disabled. Unset leaves existing Claude auto-compact env untouched; Disabled removes it.'
+    Write-Host '  -AutoCompactWindow  Required with -AutoCompact Enabled. Writes CLAUDE_CODE_AUTO_COMPACT_WINDOW.'
+    Write-Host '  -AutoCompactPct     Required with -AutoCompact Enabled. Writes CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, range 1-100.'
     Write-Host ''
     Write-Host 'Examples:'
     Write-Host '  .\scripts\CodexToClaude.ps1 install -Port 8317 -ProxyMode Auto -ProxyUrl "127.0.0.1:7897"'
     Write-Host '  .\scripts\CodexToClaude.ps1 install -Provider occ -Port 3456 -ProxyMode Direct'
+    Write-Host '  .\scripts\CodexToClaude.ps1 configure -Port 8317 -ProxyMode Direct -AutoCompact Enabled -AutoCompactWindow 120000 -AutoCompactPct 70'
+    Write-Host '  .\scripts\CodexToClaude.ps1 configure -Port 8317 -ProxyMode Direct -AutoCompact Disabled'
     Write-Host '  .\scripts\CodexToClaude.ps1 login -Device'
     Write-Host '  .\scripts\CodexToClaude.ps1 restart'
 }
@@ -762,6 +773,31 @@ function Remove-JsonProperty([object]$Object, [string]$Name) {
     if ($prop) { $Object.PSObject.Properties.Remove($Name) }
 }
 
+function Validate-AutoCompactOptions {
+    if ($AutoCompact -eq 'Enabled') {
+        if (-not $AutoCompactWindowProvided -or -not $AutoCompactPctProvided) {
+            throw 'AutoCompact Enabled requires -AutoCompactWindow and -AutoCompactPct.'
+        }
+        if ($AutoCompactWindow -lt 1) { throw 'AutoCompactWindow must be greater than 0.' }
+        if ($AutoCompactPct -lt 1 -or $AutoCompactPct -gt 100) { throw 'AutoCompactPct must be in range 1-100.' }
+        return
+    }
+
+    if ($AutoCompactWindowProvided -or $AutoCompactPctProvided) {
+        throw 'AutoCompactWindow and AutoCompactPct can only be used with -AutoCompact Enabled.'
+    }
+}
+
+function Apply-AutoCompactEnv([object]$Env) {
+    if ($AutoCompact -eq 'Enabled') {
+        Set-JsonProperty $Env 'CLAUDE_CODE_AUTO_COMPACT_WINDOW' ([string]$AutoCompactWindow)
+        Set-JsonProperty $Env 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' ([string]$AutoCompactPct)
+    } elseif ($AutoCompact -eq 'Disabled') {
+        Remove-JsonProperty $Env 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
+        Remove-JsonProperty $Env 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'
+    }
+}
+
 function Get-LocalNoProxyItems([int]$ResolvedPort) {
     return @('127.0.0.1', 'localhost', '::1', "127.0.0.1:$ResolvedPort", "localhost:$ResolvedPort")
 }
@@ -856,6 +892,7 @@ function Configure-Claude([int]$ResolvedPort) {
     } else {
         Remove-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL'
     }
+    Apply-AutoCompactEnv $settings.env
     Remove-JsonProperty $settings.env 'ANTHROPIC_MODEL'
     $outJson = ConvertTo-JsonIndent2 $settings 20
     Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
@@ -1408,6 +1445,7 @@ switch ($Command) {
     }
 
     'configure' {
+        Validate-AutoCompactOptions
         $resolvedPort = Resolve-Port $true
         $resolvedProxy = Resolve-ProxyUrl $true
         Ensure-InstallDir

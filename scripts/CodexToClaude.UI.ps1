@@ -57,6 +57,14 @@ $I18N = @{
         'hint.proxy.occ' = 'Auto can switch HTTP to SOCKS5 on timeout. Use 127.0.0.1:7897, http://..., or socks5://.... Direct ignores this field.'
         'check.device' = 'Use device login'
         'check.skipStream' = 'Skip Claude stream check'
+        'field.autoCompact' = 'Auto compact'
+        'field.autoCompactWindow' = 'Window'
+        'field.autoCompactPct' = 'Pct'
+        'hint.autoCompact' = 'Unset keeps existing Claude settings. Enabled writes both values; Disabled removes both env vars. Trigger timing is approximate.'
+        'dialog.autoCompactRequiredTitle' = 'Auto compact values required'
+        'dialog.autoCompactRequired' = 'AutoCompact Enabled requires both Window and Pct.'
+        'dialog.autoCompactInvalidTitle' = 'Invalid auto compact values'
+        'dialog.autoCompactInvalid' = 'Window must be greater than 0, and Pct must be in range 1-100.'
         'wizard.title' = 'Quick start wizard'
         'wizard.description.cliproxy' = 'Follow these steps for first-time setup. Each step calls the same CLI command shown in the log.'
         'wizard.description.occ' = 'Follow these steps to set up OpenCode Go. Each step calls the same CLI command shown in the log.'
@@ -151,6 +159,14 @@ $I18N = @{
         'hint.proxy.occ' = 'Auto 超时时可从 HTTP 切到 SOCKS5。可填 127.0.0.1:7897、http://... 或 socks5://...；Direct 会忽略此项。'
         'check.device' = '使用设备码登录'
         'check.skipStream' = '跳过 Claude stream 检查'
+        'field.autoCompact' = '自动压缩'
+        'field.autoCompactWindow' = '窗口'
+        'field.autoCompactPct' = '百分比'
+        'hint.autoCompact' = 'Unset 不触碰现有 Claude 配置；Enabled 写入两个值；Disabled 删除两个环境变量。实际触发时机仍是近似值。'
+        'dialog.autoCompactRequiredTitle' = '需要自动压缩参数'
+        'dialog.autoCompactRequired' = 'AutoCompact Enabled 必须同时填写 Window 和 Pct。'
+        'dialog.autoCompactInvalidTitle' = '自动压缩参数无效'
+        'dialog.autoCompactInvalid' = 'Window 必须大于 0，Pct 必须在 1-100 范围内。'
         'wizard.title' = '快速开始向导'
         'wizard.description.cliproxy' = '首次使用按顺序执行这些步骤。每一步都会调用日志中显示的同一个 CLI 命令。'
         'wizard.description.occ' = '按顺序执行这些步骤配置 OpenCode Go。每一步都会调用日志中显示的同一个 CLI 命令。'
@@ -256,6 +272,9 @@ function New-DefaultPreferences {
             opusModel = @{ cliproxy = 'gpt-5.5'; occ = 'deepseek-v4-pro' }
             sonnetModel = @{ cliproxy = 'gpt-5.4'; occ = 'deepseek-v4-pro' }
             haikuModel = @{ cliproxy = 'gpt-5.4'; occ = 'deepseek-v4-flash' }
+            autoCompact = 'Unset'
+            autoCompactWindow = ''
+            autoCompactPct = ''
             useDeviceLogin = $false
             skipStreamCheck = $false
         }
@@ -325,6 +344,10 @@ function Load-UiPreferences {
         if ($defaults.lastValues.haikuModel.occ -eq 'claude-haiku-4-5') { $defaults.lastValues.haikuModel.occ = 'deepseek-v4-flash' }
         $defaults.lastValues.useDeviceLogin = [bool](Get-ObjectProperty $last 'useDeviceLogin' $defaults.lastValues.useDeviceLogin)
         $defaults.lastValues.skipStreamCheck = [bool](Get-ObjectProperty $last 'skipStreamCheck' $defaults.lastValues.skipStreamCheck)
+        $defaults.lastValues.autoCompact = [string](Get-ObjectProperty $last 'autoCompact' $defaults.lastValues.autoCompact)
+        if ($defaults.lastValues.autoCompact -notin @('Unset', 'Enabled', 'Disabled')) { $defaults.lastValues.autoCompact = 'Unset' }
+        $defaults.lastValues.autoCompactWindow = [string](Get-ObjectProperty $last 'autoCompactWindow' $defaults.lastValues.autoCompactWindow)
+        $defaults.lastValues.autoCompactPct = [string](Get-ObjectProperty $last 'autoCompactPct' $defaults.lastValues.autoCompactPct)
         $defaults.lastValues.apiKey = [string](Get-ObjectProperty $last 'apiKey' $defaults.lastValues.apiKey)
         if ($defaults.lastValues.apiKey -eq '') { $defaults.lastValues.apiKey = 'sk-cliproxy-local-dev-2026' }
         if ($defaults.lastValues.claudeSettingsPath -match '^[A-Za-z]:\\Users\\Demo\\') { $defaults.lastValues.claudeSettingsPath = $DefaultSettingsPath }
@@ -351,6 +374,9 @@ function Save-UiPreferences {
     $script:Prefs.lastValues.haikuModel[$script:CurrentProvider] = $haikuModelBox.Text.Trim()
     $script:Prefs.lastValues.useDeviceLogin = [bool]$deviceCheck.Checked
     $script:Prefs.lastValues.skipStreamCheck = [bool]$skipStreamCheck.Checked
+    $script:Prefs.lastValues.autoCompact = [string]$autoCompactBox.SelectedItem
+    $script:Prefs.lastValues.autoCompactWindow = $autoCompactWindowBox.Text.Trim()
+    $script:Prefs.lastValues.autoCompactPct = $autoCompactPctBox.Text.Trim()
     $json = $script:Prefs | ConvertTo-Json -Depth 6
     [System.IO.File]::WriteAllText($PrefsPath, $json + "`n", [System.Text.Encoding]::UTF8)
 }
@@ -524,6 +550,27 @@ function Validate-Inputs([bool]$RequireProxy) {
     return $true
 }
 
+function Validate-AutoCompactInputs {
+    if ([string]$autoCompactBox.SelectedItem -ne 'Enabled') { return $true }
+    $windowText = $autoCompactWindowBox.Text.Trim()
+    $pctText = $autoCompactPctBox.Text.Trim()
+    if ($windowText -eq '' -or $pctText -eq '') {
+        Show-Message 'dialog.autoCompactRequired' 'dialog.autoCompactRequiredTitle'
+        return $false
+    }
+    if ($windowText -notmatch '^\d+$' -or $pctText -notmatch '^\d+$') {
+        Show-Message 'dialog.autoCompactInvalid' 'dialog.autoCompactInvalidTitle'
+        return $false
+    }
+    $window = [int]$windowText
+    $pct = [int]$pctText
+    if ($window -lt 1 -or $pct -lt 1 -or $pct -gt 100) {
+        Show-Message 'dialog.autoCompactInvalid' 'dialog.autoCompactInvalidTitle'
+        return $false
+    }
+    return $true
+}
+
 function Build-Args([string]$Command, [bool]$NeedPortProxy) {
     $cliArgs = @($Command, '-Provider', $script:CurrentProvider)
     $mode = [string]$proxyModeBox.SelectedItem
@@ -536,6 +583,16 @@ function Build-Args([string]$Command, [bool]$NeedPortProxy) {
     if ($opusModelBox.Text.Trim() -ne '') { $cliArgs += @('-OpusModel', $opusModelBox.Text.Trim()) }
     if ($sonnetModelBox.Text.Trim() -ne '') { $cliArgs += @('-SonnetModel', $sonnetModelBox.Text.Trim()) }
     if ($haikuModelBox.Text.Trim() -ne '') { $cliArgs += @('-HaikuModel', $haikuModelBox.Text.Trim()) }
+    if ($Command -eq 'configure') {
+        $autoCompact = [string]$autoCompactBox.SelectedItem
+        if ($autoCompact -and $autoCompact -ne 'Unset') {
+            $cliArgs += @('-AutoCompact', $autoCompact)
+            if ($autoCompact -eq 'Enabled') {
+                $cliArgs += @('-AutoCompactWindow', $autoCompactWindowBox.Text.Trim())
+                $cliArgs += @('-AutoCompactPct', $autoCompactPctBox.Text.Trim())
+            }
+        }
+    }
     if ($deviceCheck.Checked -and $Command -eq 'login') { $cliArgs += '-Device' }
     if ($skipStreamCheck.Checked) { $cliArgs += '-SkipClaudeStreamCheck' }
     return $cliArgs
@@ -588,6 +645,7 @@ exit `$exitCode
 function Run-Command([string]$Command, [bool]$NeedPortProxy) {
     if ($NeedPortProxy -and -not (Validate-Inputs $true)) { return $false }
     if ((@('start','stop','restart','status','verify','doctor') -contains $Command) -and -not (Validate-Inputs $false)) { return $false }
+    if ($Command -eq 'configure' -and -not (Validate-AutoCompactInputs)) { return $false }
     Save-UiPreferences
     Append-Log ""
     Append-Log "> $Command"
@@ -816,8 +874,8 @@ $script:WizardCompleted = [bool]$script:Prefs.firstRunCompleted
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "$(T 'app.title') $(Get-ProjectVersion)"
-$form.Size = New-Object System.Drawing.Size(980, 850)
-$form.MinimumSize = New-Object System.Drawing.Size(980, 850)
+$form.Size = New-Object System.Drawing.Size(980, 900)
+$form.MinimumSize = New-Object System.Drawing.Size(980, 900)
 $form.StartPosition = 'CenterScreen'
 $form.SuspendLayout()
 
@@ -891,7 +949,7 @@ $btnOcc.Add_Click({ Switch-Provider 'occ' })
 $settingsGroup = New-Object System.Windows.Forms.GroupBox
 $settingsGroup.Text = T 'settings.title'
 $settingsGroup.Location = New-Object System.Drawing.Point(16, 135)
-$settingsGroup.Size = New-Object System.Drawing.Size(930, 205)
+$settingsGroup.Size = New-Object System.Drawing.Size(930, 245)
 $settingsGroup.SuspendLayout()
 Register-Text $settingsGroup 'settings.title'
 $form.Controls.Add($settingsGroup)
@@ -957,8 +1015,41 @@ $skipStreamCheck.Checked = [bool]$script:Prefs.lastValues.skipStreamCheck
 Register-Text $skipStreamCheck 'check.skipStream'
 $settingsGroup.Controls.Add($skipStreamCheck)
 
+$settingsGroup.Controls.Add((New-Label (T 'field.autoCompact') 14 200 120 22))
+Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.autoCompact'
+$autoCompactBox = New-Object System.Windows.Forms.ComboBox
+$autoCompactBox.DropDownStyle = 'DropDownList'
+$autoCompactBox.Location = New-Object System.Drawing.Point(140, 196)
+$autoCompactBox.Size = New-Object System.Drawing.Size(110, 24)
+[void]$autoCompactBox.Items.AddRange(@('Unset', 'Enabled', 'Disabled'))
+[void]($autoCompactBox.SelectedItem = $script:Prefs.lastValues.autoCompact)
+$settingsGroup.Controls.Add($autoCompactBox)
+
+$settingsGroup.Controls.Add((New-Label (T 'field.autoCompactWindow') 265 200 60 22))
+Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.autoCompactWindow'
+$autoCompactWindowBox = New-TextBox $script:Prefs.lastValues.autoCompactWindow 330 196 95
+$settingsGroup.Controls.Add($autoCompactWindowBox)
+
+$settingsGroup.Controls.Add((New-Label (T 'field.autoCompactPct') 440 200 50 22))
+Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.autoCompactPct'
+$autoCompactPctBox = New-TextBox $script:Prefs.lastValues.autoCompactPct 495 196 55
+$settingsGroup.Controls.Add($autoCompactPctBox)
+
+$autoCompactHint = New-Label (T 'hint.autoCompact') 565 190 340 44
+$autoCompactHint.ForeColor = [System.Drawing.Color]::DimGray
+Register-Text $autoCompactHint 'hint.autoCompact'
+$settingsGroup.Controls.Add($autoCompactHint)
+
+function Update-AutoCompactState {
+    $enabled = ([string]$autoCompactBox.SelectedItem) -eq 'Enabled'
+    [void]($autoCompactWindowBox.Enabled = $enabled)
+    [void]($autoCompactPctBox.Enabled = $enabled)
+}
+Update-AutoCompactState
+$autoCompactBox.Add_SelectedIndexChanged({ Update-AutoCompactState })
+
 $wizardGroup = New-Object System.Windows.Forms.GroupBox
-$wizardGroup.Location = New-Object System.Drawing.Point(16, 355)
+$wizardGroup.Location = New-Object System.Drawing.Point(16, 395)
 $wizardGroup.Size = New-Object System.Drawing.Size(455, 215)
 $wizardGroup.SuspendLayout()
 Register-Text $wizardGroup 'wizard.title'
@@ -992,7 +1083,7 @@ foreach ($step in $WizardSteps) {
 
 $mainGroup = New-Object System.Windows.Forms.GroupBox
 $mainGroup.Text = T 'main.title'
-$mainGroup.Location = New-Object System.Drawing.Point(490, 355)
+$mainGroup.Location = New-Object System.Drawing.Point(490, 395)
 $mainGroup.Size = New-Object System.Drawing.Size(455, 100)
 $mainGroup.SuspendLayout()
 Register-Text $mainGroup 'main.title'
@@ -1034,7 +1125,7 @@ function Layout-MainButtons {
 
 $modelsGroup = New-Object System.Windows.Forms.GroupBox
 $modelsGroup.Text = T 'models.title'
-$modelsGroup.Location = New-Object System.Drawing.Point(490, 470)
+$modelsGroup.Location = New-Object System.Drawing.Point(490, 510)
 $modelsGroup.Size = New-Object System.Drawing.Size(455, 170)
 $modelsGroup.SuspendLayout()
 Register-Text $modelsGroup 'models.title'
@@ -1067,7 +1158,7 @@ $modelsGroup.Controls.Add($saveModelsBtn)
 
 $toolsGroup = New-Object System.Windows.Forms.GroupBox
 $toolsGroup.Text = T 'advanced.title'
-$toolsGroup.Location = New-Object System.Drawing.Point(16, 585)
+$toolsGroup.Location = New-Object System.Drawing.Point(16, 625)
 $toolsGroup.Size = New-Object System.Drawing.Size(455, 55)
 $toolsGroup.SuspendLayout()
 Register-Text $toolsGroup 'advanced.title'
@@ -1085,7 +1176,7 @@ $toolsGroup.Controls.Add($diagnosticsBtn)
 
 $logGroup = New-Object System.Windows.Forms.GroupBox
 $logGroup.Text = T 'log.title'
-$logGroup.Location = New-Object System.Drawing.Point(16, 655)
+$logGroup.Location = New-Object System.Drawing.Point(16, 695)
 $logGroup.Size = New-Object System.Drawing.Size(930, 165)
 $logGroup.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $logGroup.SuspendLayout()
