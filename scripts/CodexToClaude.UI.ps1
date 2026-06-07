@@ -57,14 +57,14 @@ $I18N = @{
         'hint.proxy.occ' = 'Auto can switch HTTP to SOCKS5 on timeout. Use 127.0.0.1:7897, http://..., or socks5://.... Direct ignores this field.'
         'check.device' = 'Use device login'
         'check.skipStream' = 'Skip Claude stream check'
-        'field.autoCompact' = 'Auto compact'
-        'field.autoCompactWindow' = 'Window'
-        'field.autoCompactPct' = 'Pct'
-        'hint.autoCompact' = 'Unset keeps existing Claude settings. Enabled writes both values; Disabled removes both env vars. Trigger timing is approximate.'
+        'field.autoCompact' = 'Claude auto-compact threshold'
+        'field.autoCompactWindow' = 'Context window (K tokens)'
+        'field.autoCompactPct' = 'Trigger pct (%)'
+        'hint.autoCompact' = '120 = 120,000 raw tokens; CLI/env keep raw tokens. Unset keeps existing values.'
         'dialog.autoCompactRequiredTitle' = 'Auto compact values required'
-        'dialog.autoCompactRequired' = 'AutoCompact Enabled requires both Window and Pct.'
+        'dialog.autoCompactRequired' = 'AutoCompact Enabled requires Context window (K tokens) and Trigger pct (%).'
         'dialog.autoCompactInvalidTitle' = 'Invalid auto compact values'
-        'dialog.autoCompactInvalid' = 'Window must be greater than 0, and Pct must be in range 1-100.'
+        'dialog.autoCompactInvalid' = 'Context window must be a positive integer in K tokens; Trigger pct must be in range 1-100.'
         'wizard.title' = 'Quick start wizard'
         'wizard.description.cliproxy' = 'Follow these steps for first-time setup. Each step calls the same CLI command shown in the log.'
         'wizard.description.occ' = 'Follow these steps to set up OpenCode Go. Each step calls the same CLI command shown in the log.'
@@ -159,14 +159,14 @@ $I18N = @{
         'hint.proxy.occ' = 'Auto 超时时可从 HTTP 切到 SOCKS5。可填 127.0.0.1:7897、http://... 或 socks5://...；Direct 会忽略此项。'
         'check.device' = '使用设备码登录'
         'check.skipStream' = '跳过 Claude stream 检查'
-        'field.autoCompact' = '自动压缩'
-        'field.autoCompactWindow' = '窗口'
-        'field.autoCompactPct' = '百分比'
-        'hint.autoCompact' = 'Unset 不触碰现有 Claude 配置；Enabled 写入两个值；Disabled 删除两个环境变量。实际触发时机仍是近似值。'
+        'field.autoCompact' = 'Claude 自动压缩阈值'
+        'field.autoCompactWindow' = '上下文窗口(k tokens)'
+        'field.autoCompactPct' = '触发比例(%)'
+        'hint.autoCompact' = '120 = 120,000 raw tokens；CLI/env 仍用 raw tokens。Unset 保留已有值。'
         'dialog.autoCompactRequiredTitle' = '需要自动压缩参数'
-        'dialog.autoCompactRequired' = 'AutoCompact Enabled 必须同时填写 Window 和 Pct。'
+        'dialog.autoCompactRequired' = 'AutoCompact Enabled 必须同时填写上下文窗口(k tokens)和触发比例(%)。'
         'dialog.autoCompactInvalidTitle' = '自动压缩参数无效'
-        'dialog.autoCompactInvalid' = 'Window 必须大于 0，Pct 必须在 1-100 范围内。'
+        'dialog.autoCompactInvalid' = '上下文窗口必须是大于 0 的整数 k tokens；触发比例必须在 1-100 范围内。'
         'wizard.title' = '快速开始向导'
         'wizard.description.cliproxy' = '首次使用按顺序执行这些步骤。每一步都会调用日志中显示的同一个 CLI 命令。'
         'wizard.description.occ' = '按顺序执行这些步骤配置 OpenCode Go。每一步都会调用日志中显示的同一个 CLI 命令。'
@@ -550,6 +550,15 @@ function Validate-Inputs([bool]$RequireProxy) {
     return $true
 }
 
+function Convert-KTokensToRawTokens([string]$Value) {
+    $text = $Value.Trim()
+    if ($text -eq '' -or $text -notmatch '^\d+$') { throw 'Auto compact window must be a positive integer in K tokens.' }
+    $windowK = [int64]$text
+    $maxWindowK = [int64][Math]::Floor([int]::MaxValue / 1000)
+    if ($windowK -lt 1 -or $windowK -gt $maxWindowK) { throw 'Auto compact window K tokens value is too large.' }
+    return [string]($windowK * 1000)
+}
+
 function Validate-AutoCompactInputs {
     if ([string]$autoCompactBox.SelectedItem -ne 'Enabled') { return $true }
     $windowText = $autoCompactWindowBox.Text.Trim()
@@ -558,13 +567,18 @@ function Validate-AutoCompactInputs {
         Show-Message 'dialog.autoCompactRequired' 'dialog.autoCompactRequiredTitle'
         return $false
     }
-    if ($windowText -notmatch '^\d+$' -or $pctText -notmatch '^\d+$') {
+    if ($pctText -notmatch '^\d+$') {
         Show-Message 'dialog.autoCompactInvalid' 'dialog.autoCompactInvalidTitle'
         return $false
     }
-    $window = [int]$windowText
-    $pct = [int]$pctText
-    if ($window -lt 1 -or $pct -lt 1 -or $pct -gt 100) {
+    try {
+        Convert-KTokensToRawTokens $windowText | Out-Null
+        $pct = [int64]$pctText
+    } catch {
+        Show-Message 'dialog.autoCompactInvalid' 'dialog.autoCompactInvalidTitle'
+        return $false
+    }
+    if ($pct -lt 1 -or $pct -gt 100) {
         Show-Message 'dialog.autoCompactInvalid' 'dialog.autoCompactInvalidTitle'
         return $false
     }
@@ -588,7 +602,9 @@ function Build-Args([string]$Command, [bool]$NeedPortProxy) {
         if ($autoCompact -and $autoCompact -ne 'Unset') {
             $cliArgs += @('-AutoCompact', $autoCompact)
             if ($autoCompact -eq 'Enabled') {
-                $cliArgs += @('-AutoCompactWindow', $autoCompactWindowBox.Text.Trim())
+                # GUI displays K tokens; CLI/env keep raw token counts.
+                $windowRawTokens = Convert-KTokensToRawTokens $autoCompactWindowBox.Text
+                $cliArgs += @('-AutoCompactWindow', $windowRawTokens)
                 $cliArgs += @('-AutoCompactPct', $autoCompactPctBox.Text.Trim())
             }
         }
@@ -1015,27 +1031,27 @@ $skipStreamCheck.Checked = [bool]$script:Prefs.lastValues.skipStreamCheck
 Register-Text $skipStreamCheck 'check.skipStream'
 $settingsGroup.Controls.Add($skipStreamCheck)
 
-$settingsGroup.Controls.Add((New-Label (T 'field.autoCompact') 14 200 120 22))
+$settingsGroup.Controls.Add((New-Label (T 'field.autoCompact') 14 200 170 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.autoCompact'
 $autoCompactBox = New-Object System.Windows.Forms.ComboBox
 $autoCompactBox.DropDownStyle = 'DropDownList'
-$autoCompactBox.Location = New-Object System.Drawing.Point(140, 196)
-$autoCompactBox.Size = New-Object System.Drawing.Size(110, 24)
+$autoCompactBox.Location = New-Object System.Drawing.Point(190, 196)
+$autoCompactBox.Size = New-Object System.Drawing.Size(85, 24)
 [void]$autoCompactBox.Items.AddRange(@('Unset', 'Enabled', 'Disabled'))
 [void]($autoCompactBox.SelectedItem = $script:Prefs.lastValues.autoCompact)
 $settingsGroup.Controls.Add($autoCompactBox)
 
-$settingsGroup.Controls.Add((New-Label (T 'field.autoCompactWindow') 265 200 60 22))
+$settingsGroup.Controls.Add((New-Label (T 'field.autoCompactWindow') 290 200 145 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.autoCompactWindow'
-$autoCompactWindowBox = New-TextBox $script:Prefs.lastValues.autoCompactWindow 330 196 95
+$autoCompactWindowBox = New-TextBox $script:Prefs.lastValues.autoCompactWindow 440 196 70
 $settingsGroup.Controls.Add($autoCompactWindowBox)
 
-$settingsGroup.Controls.Add((New-Label (T 'field.autoCompactPct') 440 200 50 22))
+$settingsGroup.Controls.Add((New-Label (T 'field.autoCompactPct') 525 200 95 22))
 Register-Text $settingsGroup.Controls[$settingsGroup.Controls.Count - 1] 'field.autoCompactPct'
-$autoCompactPctBox = New-TextBox $script:Prefs.lastValues.autoCompactPct 495 196 55
+$autoCompactPctBox = New-TextBox $script:Prefs.lastValues.autoCompactPct 625 196 45
 $settingsGroup.Controls.Add($autoCompactPctBox)
 
-$autoCompactHint = New-Label (T 'hint.autoCompact') 565 190 340 44
+$autoCompactHint = New-Label (T 'hint.autoCompact') 685 190 220 44
 $autoCompactHint.ForeColor = [System.Drawing.Color]::DimGray
 Register-Text $autoCompactHint 'hint.autoCompact'
 $settingsGroup.Controls.Add($autoCompactHint)

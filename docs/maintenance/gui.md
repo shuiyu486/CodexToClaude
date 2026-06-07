@@ -37,6 +37,8 @@ Install -> Login -> Configure -> Restart -> Verify
 - `Auto` / `Http` / `Socks5` 必须要求代理地址非空。
 - `Direct` 模式应禁用或忽略代理地址输入。
 - 自动压缩阈值属于 Claude Code settings env，GUI 只收集 `Unset` / `Enabled` / `Disabled` 和 window/pct 参数，并透传给 CLI `configure`；不得在 GUI 中直接写 settings。
+- GUI 中 `上下文窗口(k tokens)` 只接受整数 k tokens，并在 `Build-Args` 中转换为 CLI/env 使用的 raw tokens；CLI 参数和 settings env 仍使用 raw tokens。
+- 不迁移旧 GUI 偏好；已有 `autoCompactWindow` 值会原样显示，用户需要按 k tokens 单位手动调整。
 - `Unset` 不传自动压缩参数，保持已有 settings；`Enabled` 必须校验 window/pct；`Disabled` 只传禁用/清理意图，不传残留 window/pct。
 - 代理、认证和 settings 合并细节见 `proxy-auth.md`。
 
@@ -97,6 +99,7 @@ GUI 修改后至少确认：
 - `CodexToClaude-GUI.cmd` 存在。
 - 中英文切换后主要标签、按钮和弹窗文案可读。
 - 自动压缩三态控件在 Unset/Enabled/Disabled 之间切换正确，Enabled 缺 window/pct 时阻止 Configure。
+- Enabled 时 GUI 输入 `120` k tokens 应向 CLI 传 `-AutoCompactWindow 120000`；Pct 不做单位转换。
 - 快速向导仍按 `Install -> Login -> Configure -> Restart -> Verify` 调用 CLI。
 - OCC 后端隐藏 Login 步骤并保留 API key 输入路径。
 - 高级管理按钮只调用 CLI 子命令，不直接执行 git、下载、替换 exe 或写 settings。

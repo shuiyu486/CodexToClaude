@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.30-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.31-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -230,6 +230,8 @@ $env:OC_GO_CC_API_KEY = "你的 OpenCode Go API Key"
 ```
 
 `Enabled` 必须同时提供两个值。`Disabled` 会删除 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 和 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`；`Unset` 不触碰已有值。实际压缩触发时机仍由 Claude Code 控制，只能视为近似阈值。
+
+GUI 提示：界面字段是 `上下文窗口(k tokens)`，填写 `120` 会向 CLI/env 传入 `120000` raw tokens。已有 GUI 偏好不会自动迁移；如果旧值仍显示为 `120000`，请手动改成 `120`。
 
 ## ⚙️ 常用命令
 

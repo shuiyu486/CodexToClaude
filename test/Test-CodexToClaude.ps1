@@ -309,12 +309,18 @@ TestCase 'GUI exposes auto compact configure options' {
     foreach ($key in @('field.autoCompact', 'field.autoCompactWindow', 'field.autoCompactPct', 'hint.autoCompact', 'dialog.autoCompactRequired', 'dialog.autoCompactInvalid')) {
         if ($source -notmatch [regex]::Escape($key)) { throw "GUI auto compact text key missing: $key" }
     }
-    foreach ($name in @('autoCompactBox', 'autoCompactWindowBox', 'autoCompactPctBox', 'Update-AutoCompactState', 'Validate-AutoCompactInputs')) {
+    foreach ($text in @('Claude auto-compact threshold', 'Context window (K tokens)', 'Trigger pct (%)', 'Claude 自动压缩阈值', '上下文窗口(k tokens)', '触发比例(%)')) {
+        if ($source -notmatch [regex]::Escape($text)) { throw "GUI auto compact clear text missing: $text" }
+    }
+    foreach ($name in @('autoCompactBox', 'autoCompactWindowBox', 'autoCompactPctBox', 'Update-AutoCompactState', 'Validate-AutoCompactInputs', 'Convert-KTokensToRawTokens')) {
         if ($source -notmatch [regex]::Escape($name)) { throw "GUI auto compact control or helper missing: $name" }
     }
     if ($source -notmatch [regex]::Escape('$Command -eq ''configure''') -or $source -notmatch "'-AutoCompact'") { throw 'GUI should pass auto compact args only through configure.' }
     if ($source -notmatch [regex]::Escape('$autoCompact -ne ''Unset''')) { throw 'GUI should omit auto compact CLI args when unset.' }
     if ($source -notmatch "'-AutoCompactWindow'" -or $source -notmatch "'-AutoCompactPct'") { throw 'GUI should pass auto compact window and pct when enabled.' }
+    if ($source -notmatch '\*\s*1000' -or $source -notmatch '\[int\]::MaxValue') { throw 'GUI should convert K tokens to raw tokens and guard CLI int range.' }
+    if ($source -notmatch 'Convert-KTokensToRawTokens\s+\$autoCompactWindowBox\.Text') { throw 'GUI should convert auto compact window before passing it to CLI.' }
+    if ($source -match "'-AutoCompactWindow',\s*\$autoCompactWindowBox\.Text\.Trim\(\)") { throw 'GUI should not pass K-token textbox directly as raw AutoCompactWindow.' }
 }
 
 TestCase 'ProxyUrl none configure writes no proxy-url line' {

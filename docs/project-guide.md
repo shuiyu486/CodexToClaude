@@ -107,7 +107,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 | 改动 | 额外验证 |
 |---|---|
 | 代理逻辑 | `Auto host:port -> http://...`、`Socks5 -> socks5://...`、`Direct` 省略代理并清理 CLIProxy auth `proxy_url`；命令行 env 只写 User 作用域并保留既有 `NO_PROXY` |
-| GUI | UI 脚本可解析、`CodexToClaude-GUI.cmd` 存在、中英文切换、快速向导关键路径；命令输出增量读取且先脱敏 |
+| GUI | UI 脚本可解析、`CodexToClaude-GUI.cmd` 存在、中英文切换、快速向导关键路径；命令输出增量读取且先脱敏；自动压缩 GUI k tokens 输入需转换为 CLI raw tokens |
 | auth/status | 不输出 token；CLIProxy 只扫描 `$InstallDir` 根目录 JSON；OCC 检查 API key 来源 |
 | settings 合并 | 只更新目标 env 键，保留 `statusLine`、`permissions`、`language` 等字段；自动压缩 Unset/未传不触碰，Enabled 写入两个 env，Disabled 删除两个 env |
 | update 逻辑 | 停服、备份、替换、恢复启动；dirty 工作区阻断 project update |

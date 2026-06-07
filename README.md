@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.30-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.31-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -230,6 +230,8 @@ If Claude Code misdetects a proxy model's context window, explicitly configure a
 ```
 
 `Enabled` requires both values. `Disabled` removes `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`; `Unset` leaves any existing values untouched. The actual compact timing is still approximate and controlled by Claude Code.
+
+GUI note: the GUI field is `Context window (K tokens)`, so enter `120` to send `120000` raw tokens to the CLI/env. Existing GUI preferences are not migrated automatically; if an old saved value still shows `120000`, edit it manually to `120`.
 
 ## ⚙️ Common commands
 
