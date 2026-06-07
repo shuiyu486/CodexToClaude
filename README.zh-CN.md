@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.28-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.29-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -317,7 +317,21 @@ CodexToClaude 只负责透传 headers，不负责状态栏渲染。
 
 ## 💭 关于 thinking 输出
 
-CodexToClaude 默认会过滤 CLIProxyAPI 请求中的 `reasoning` / `reasoning.effort` / `thinking` 参数，用来规避 Claude Code TUI 在部分 Codex thinking 流中出现中文重复字符或长时间 thinking 流的问题。正常回答文本不受影响。
+CodexToClaude 默认会把 `reasoning` / `reasoning.effort` / `thinking` 透传给 CLIProxyAPI，让后端跟随 Claude Code 当前 `/effort` 或 `effortLevel`，而不是把思考强度写死为 max。
+
+如果 Codex thinking 流导致中文重复字符、thinking 输出过长或其它 TUI 展示异常，可以手动在 `cli-proxy-api/config.yaml` 中加入下面的兼容过滤配置，然后重启 CodexToClaude。这样会关闭匹配 Codex 模型的这些思考相关请求字段。
+
+```yaml
+payload:
+  filter:
+    - models:
+        - name: "gpt-*"
+          protocol: "codex"
+      params:
+        - "reasoning"
+        - "reasoning.effort"
+        - "thinking"
+```
 
 ## 🛡️ 安全提醒
 

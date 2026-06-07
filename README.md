@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.28-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.29-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -318,7 +318,21 @@ CodexToClaude only forwards headers; rendering usage limits is handled by your s
 
 ## 💭 About thinking output
 
-CodexToClaude filters `reasoning` / `reasoning.effort` / `thinking` from CLIProxyAPI requests by default. This avoids duplicated Chinese characters and long thinking streams that can appear in some Codex thinking responses inside the Claude Code TUI. Normal answer text is unaffected.
+CodexToClaude passes `reasoning` / `reasoning.effort` / `thinking` through to CLIProxyAPI by default, so the backend can follow the current Claude Code `/effort` or `effortLevel` instead of a hard-coded max effort.
+
+If Codex thinking streams cause duplicated characters, very long thinking output, or other TUI display issues, you can manually add this compatibility filter to `cli-proxy-api/config.yaml` and restart CodexToClaude. This disables those thinking-related request fields for matching Codex models.
+
+```yaml
+payload:
+  filter:
+    - models:
+        - name: "gpt-*"
+          protocol: "codex"
+      params:
+        - "reasoning"
+        - "reasoning.effort"
+        - "thinking"
+```
 
 ## 🛡️ Security notes
 

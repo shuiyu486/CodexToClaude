@@ -116,6 +116,12 @@ TestCase 'Claude stream-json check uses bounded watchdog' {
     if ($body -notmatch 'Stop-Process\s+-Id\s+\$proc\.Id') {
         throw 'Claude stream-json watchdog must stop the hung claude.exe process.'
     }
+    if ($body -match [regex]::Escape('payload.filter may need update')) {
+        throw 'Claude stream-json diagnostics must not recommend restoring payload.filter.'
+    }
+    if ($body -notmatch 'thinking_delta_count') {
+        throw 'Claude stream-json diagnostics should report thinking_delta_count.'
+    }
 }
 
 TestCase 'Status remains read-only' {
@@ -153,9 +159,10 @@ TestCase 'Provider start validates health for existing listeners' {
 TestCase 'CLIProxy risk diagnostics checks hang-prone configuration' {
     $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
     if ($clip -notmatch 'function\s+CLIProxy-GetRiskDiagnostics') { throw 'CLIProxy-GetRiskDiagnostics missing.' }
-    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits', 'payload.filter', 'reasoning.effort', 'thinking')) {
+    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits')) {
         if ($clip -notmatch [regex]::Escape($field)) { throw "CLIProxy risk diagnostics missing check for $field" }
     }
+    if ($clip -match [regex]::Escape('payload.filter should remove reasoning, reasoning.effort, and thinking')) { throw 'CLIProxy risk diagnostics should not require payload filtering.' }
 }
 
 TestCase 'Port process detection ignores stale TCP connections' {
@@ -314,11 +321,13 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }
+        if ($settings.env.PSObject.Properties['CLAUDE_CODE_EFFORT_LEVEL']) { throw 'CLIProxy should not force Claude effort level.' }
         if ($config -notmatch '(?m)^passthrough-headers:\s*true\r?$') { throw 'CLIProxy should forward upstream response headers.' }
         if ($config -notmatch '(?m)^request-retry:\s*1\r?$') { throw 'CLIProxy request retry should be bounded.' }
         if ($config -notmatch '(?m)^max-retry-credentials:\s*1\r?$') { throw 'CLIProxy credential retry should be bounded.' }
         if ($config -notmatch '(?m)^\s*antigravity-credits:\s*false\r?$') { throw 'CLIProxy should not fall back to Antigravity credits by default.' }
-        if ($config -notmatch '(?m)^\s*-\s*"thinking"\s*$') { throw 'CLIProxy should filter Claude thinking requests for Codex models.' }
+        if ($config -match '(?m)^payload:\s*$' -or $config -match '(?m)^\s*filter:\s*$') { throw 'CLIProxy should pass through Claude reasoning and thinking by default.' }
+        if ($config -match [regex]::Escape('reasoning.effort') -or $config -match '(?m)^\s*-\s*"thinking"\s*$') { throw 'CLIProxy should not filter Claude reasoning or thinking by default.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-5.5') { throw 'Default Opus model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-5.4') { throw 'Default Sonnet model name mismatch.' }
     } finally {
@@ -337,7 +346,7 @@ TestCase 'Configure preserves non-env Claude settings' {
             statusLine = [pscustomobject]@{ type = 'command'; command = 'ctc-status' }
             permissions = [pscustomobject]@{ allow = @('Bash(git status:*)') }
             language = 'zh-CN'
-            env = [pscustomobject]@{ EXISTING_KEY = 'keep-me'; ENABLE_TOOL_SEARCH = 'false' }
+            env = [pscustomobject]@{ EXISTING_KEY = 'keep-me'; ENABLE_TOOL_SEARCH = 'false'; CLAUDE_CODE_EFFORT_LEVEL = 'max' }
         } | ConvertTo-Json -Depth 10
         [System.IO.File]::WriteAllText($settingsPath, $initial, [System.Text.Encoding]::UTF8)
         & $Script configure -Port 18327 -ProxyUrl none -InstallDir $installDir -ClaudeSettingsPath $settingsPath 2>&1 | Out-Null
@@ -346,6 +355,7 @@ TestCase 'Configure preserves non-env Claude settings' {
         if (@($settings.permissions.allow)[0] -ne 'Bash(git status:*)') { throw 'permissions should be preserved.' }
         if ($settings.language -ne 'zh-CN') { throw 'language should be preserved.' }
         if ($settings.env.EXISTING_KEY -ne 'keep-me') { throw 'existing env values should be preserved.' }
+        if ($settings.env.PSObject.Properties['CLAUDE_CODE_EFFORT_LEVEL']) { throw 'CLIProxy configure should remove stale Claude effort env.' }
         if ($settings.env.ENABLE_TOOL_SEARCH -ne 'true') { throw 'ToolSearch should be enabled by configure.' }
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18327') { throw 'Claude base URL should be updated.' }
     } finally {
@@ -581,6 +591,7 @@ TestCase 'OCC configure writes config.json' {
         if ($config.host -ne '127.0.0.1') { throw "OCC config host mismatch: $($config.host)" }
         $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:13456') { throw 'Claude base URL mismatch for OCC.' }
+        if ($settings.env.CLAUDE_CODE_EFFORT_LEVEL -ne 'max') { throw 'OCC should keep Claude effort level max.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

@@ -32,7 +32,7 @@ CLIProxyAPI config：
 - 保留 `passthrough-headers: true`。
 - 保留 `codex-header-defaults.user-agent`，用于 CLIProxyAPI 的 Codex OAuth 上游 HTTP/websocket 请求 fallback UA，降低空/异常 UA 触发上游风控的概率。
 - 保留 bounded retry 相关默认值的诊断可见性。
-- 保留 `payload.filter` 覆盖 `reasoning`、`reasoning.effort`、`thinking`，避免 Claude Code TUI 中文 thinking 流重复字符。
+- 默认不生成 `payload.filter`，透传 `reasoning`、`reasoning.effort`、`thinking`，让 Claude Code 当前 `/effort` / `effortLevel` 决定请求语义；如需规避 thinking 流展示问题，只能由用户手动添加兼容过滤配置。
 
 OCC config：
 
@@ -97,7 +97,7 @@ OCC：
 - 只合并更新目标 `env` 键。
 - 保留 `statusLine`、`permissions`、`language` 等其它字段。
 - `NO_PROXY` / `no_proxy` 必须包含 `127.0.0.1`、`localhost`、`::1`，以及当前 provider 的 `127.0.0.1:<Port>` / `localhost:<Port>`。
-- CLIProxy 后端移除 `CLAUDE_CODE_EFFORT_LEVEL`，配合 `payload.filter` 过滤 reasoning/thinking 参数。
+- CLIProxy 后端移除 `CLAUDE_CODE_EFFORT_LEVEL`，不写死 max，让 Claude Code 请求中的 reasoning/thinking/effort 语义透传给 CLIProxyAPI 和上游。
 - OCC 后端设置 `CLAUDE_CODE_EFFORT_LEVEL = "max"`。
 - 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；CodexToClaude `configure` 必须显式写入 `ENABLE_TOOL_SEARCH = "true"`，并用 `verify -CheckToolSearch` 作为显式 opt-in 兼容性检查。
 

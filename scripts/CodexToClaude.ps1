@@ -920,10 +920,9 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
     }
     $thinkingCount = ([regex]::Matches($output, 'thinking_delta')).Count
     $textCount = ([regex]::Matches($output, 'text_delta')).Count
-    if ($thinkingCount -ne 0) { Write-Warn "Claude stream-json contains thinking_delta_count=$thinkingCount (payload.filter may need update for current CLIProxyAPI version)" }
+    if ($thinkingCount -ne 0) { Write-Warn "Claude stream-json contains thinking_delta_count=$thinkingCount; this is expected when reasoning/thinking passthrough is active." }
     if ($textCount -eq 0) { throw 'Claude stream-json did not contain text_delta.' }
-    if ($thinkingCount -eq 0) { Write-OK "Claude stream-json check passed: thinking_delta_count=0, text_delta_count=$textCount" }
-    else { Write-OK "Claude stream-json text check passed: text_delta_count=$textCount" }
+    Write-OK "Claude stream-json text check passed: text_delta_count=$textCount, thinking_delta_count=$thinkingCount"
 }
 
 function Invoke-ToolSearchVerify([int]$ResolvedPort) {

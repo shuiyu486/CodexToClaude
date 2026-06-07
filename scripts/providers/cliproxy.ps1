@@ -163,16 +163,6 @@ streaming:
 debug: true
 logging-to-file: true
 logs-max-total-size-mb: 10
-
-payload:
-  filter:
-    - models:
-        - name: "gpt-*"
-          protocol: "codex"
-      params:
-        - "reasoning"
-        - "reasoning.effort"
-        - "thinking"
 "@
     Write-FileUtf8NoBom $ConfigPath $content
     CLIProxy-SyncAuthProxyUrl $ResolvedProxyUrl
@@ -213,8 +203,8 @@ function CLIProxy-GetRiskDiagnostics {
         $items += [pscustomobject]@{ Level = 'warn'; Message = 'quota-exceeded.antigravity-credits should be false to avoid unexpected fallback paths.' }
     }
 
-    if ($raw -notmatch 'payload:\s*[\s\S]*filter:' -or $raw -notmatch 'reasoning\.effort' -or $raw -notmatch '(?m)^\s*-\s*"reasoning"\s*$' -or $raw -notmatch '(?m)^\s*-\s*"thinking"\s*$') {
-        $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter should remove reasoning, reasoning.effort, and thinking for Codex models.' }
+    if ($raw -match 'payload:\s*[\s\S]*filter:') {
+        $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter is present; CLIProxy defaults to passing through reasoning/thinking/effort parameters. Keep this legacy filter only if you intentionally want local request rewriting.' }
     }
 
     $configProxy = Read-ConfigProxyUrl

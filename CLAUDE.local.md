@@ -34,7 +34,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - `Direct` 必须省略 provider 代理字段；CLIProxy 还必须删除 Codex OAuth JSON 中残留的 `proxy_url`。
 - `configure` 只合并更新 `~/.claude/settings.json` 的目标 `env` 键，保留 `statusLine`、`permissions`、`language` 等其它字段。
 - 禁止提交或输出 Codex OAuth JSON、`access_token`、`refresh_token`、`id_token`、真实 API key、原始日志。
-- `payload.filter` 过滤 `reasoning` / `reasoning.effort` / `thinking` 是为避免 Claude Code TUI 中文 thinking 流重复字符，不要随意删除。
+- CLIProxy 默认不生成 `payload.filter`，透传 `reasoning` / `reasoning.effort` / `thinking`，让 Claude Code 当前 `/effort` / `effortLevel` 决定请求语义；如需规避 thinking 流展示问题，只能由用户手动添加兼容过滤配置。
 - `Start-Process` 启动 provider 时必须显式传 config，并设置 `WorkingDirectory` 为 `$InstallDir`。
 - OCC 不支持 OAuth login；`-Provider occ -Command login` 必须给出明确错误。
 - 版本号单一真源是根目录 `VERSION`；有意义提交前递增 build，并同步 README 徽章和文档示例中的版本号。
