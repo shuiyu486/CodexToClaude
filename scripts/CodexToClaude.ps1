@@ -881,19 +881,13 @@ function Configure-Claude([int]$ResolvedPort) {
     $noProxy = Get-LocalNoProxyValue $ResolvedPort
     Set-JsonProperty $settings.env 'NO_PROXY' $noProxy
     Set-JsonProperty $settings.env 'no_proxy' $noProxy
-    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL' $OpusModel
-    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL' $SonnetModel
-    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
-    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' ($OpusModel -replace '\(.*\)$', '')
-    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
-    Set-JsonProperty $settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME' ($HaikuModel -replace '\(.*\)$', '')
+    Set-ClaudeModelEnv $settings
     if ($Provider -eq 'occ') {
         Set-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL' 'max'
     } else {
         Remove-JsonProperty $settings.env 'CLAUDE_CODE_EFFORT_LEVEL'
     }
     Apply-AutoCompactEnv $settings.env
-    Remove-JsonProperty $settings.env 'ANTHROPIC_MODEL'
     $outJson = ConvertTo-JsonIndent2 $settings 20
     Write-FileUtf8NoBom $ClaudeSettingsPath ($outJson + "`n")
     Write-OK "Updated: $ClaudeSettingsPath  (provider=$Provider, port=$ResolvedPort)"
@@ -1358,12 +1352,12 @@ function Ensure-ClaudeEnv([object]$Settings) {
 function Set-ClaudeModelEnv([object]$Settings) {
     Ensure-ClaudeEnv $Settings
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL' $OpusModel
+    Set-JsonProperty $Settings.env 'ANTHROPIC_MODEL' $OpusModel
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL' $SonnetModel
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL' $HaikuModel
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME' ($OpusModel -replace '\(.*\)$', '')
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME' ($SonnetModel -replace '\(.*\)$', '')
     Set-JsonProperty $Settings.env 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME' ($HaikuModel -replace '\(.*\)$', '')
-    Remove-JsonProperty $Settings.env 'ANTHROPIC_MODEL'
 }
 
 function Show-ClaudeModels {
