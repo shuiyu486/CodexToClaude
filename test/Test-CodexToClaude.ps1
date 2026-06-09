@@ -338,7 +338,6 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($settings.env.NO_PROXY -notmatch '127\.0\.0\.1' -or $settings.env.NO_PROXY -notmatch 'localhost' -or $settings.env.NO_PROXY -notmatch '127\.0\.0\.1:18317') { throw 'Claude settings should bypass proxies for the local provider URL.' }
         if ($settings.env.no_proxy -ne $settings.env.NO_PROXY) { throw 'Claude settings should write both NO_PROXY and no_proxy.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-5.5') { throw 'Default Opus model mismatch.' }
-        if ($settings.env.ANTHROPIC_MODEL -ne $settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) { throw 'ANTHROPIC_MODEL should match default Opus model.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-5.4') { throw 'Default Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-5.4') { throw 'Default Haiku model mismatch.' }
         if ($settings.env.PSObject.Properties['CLAUDE_CODE_AUTO_COMPACT_WINDOW']) { throw 'Auto compact window env should not be created by default.' }
@@ -370,7 +369,6 @@ TestCase 'Configure preserves non-env Claude settings' {
             language = 'zh-CN'
             env = [pscustomobject]@{
                 EXISTING_KEY = 'keep-me'
-                ANTHROPIC_MODEL = 'stale-model'
                 ENABLE_TOOL_SEARCH = 'false'
                 CLAUDE_CODE_EFFORT_LEVEL = 'max'
                 CLAUDE_CODE_AUTO_COMPACT_WINDOW = '111111'
@@ -388,7 +386,6 @@ TestCase 'Configure preserves non-env Claude settings' {
         if ($settings.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE -ne '66') { throw 'Auto compact pct env should be preserved when unset.' }
         if ($settings.env.PSObject.Properties['CLAUDE_CODE_EFFORT_LEVEL']) { throw 'CLIProxy configure should remove stale Claude effort env.' }
         if ($settings.env.ENABLE_TOOL_SEARCH -ne 'true') { throw 'ToolSearch should be enabled by configure.' }
-        if ($settings.env.ANTHROPIC_MODEL -ne $settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) { throw 'Configure should sync stale ANTHROPIC_MODEL to default Opus model.' }
         if ($settings.env.ANTHROPIC_BASE_URL -ne 'http://127.0.0.1:18327') { throw 'Claude base URL should be updated.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
@@ -653,27 +650,15 @@ TestCase 'Configure models writes Claude model env values' {
     $fakeHome = Join-Path $env:TEMP "ctc-test-$(Get-Date -Format 'HHmmss')-models"
     New-Item -ItemType Directory $fakeHome -Force | Out-Null
     $settingsPath = Join-Path $fakeHome '.claude\settings.json'
-    New-Item -ItemType Directory (Split-Path -Parent $settingsPath) -Force | Out-Null
     try {
-        $initial = [pscustomobject]@{
-            language = 'zh-CN'
-            env = [pscustomobject]@{
-                EXISTING_KEY = 'keep-me'
-                ANTHROPIC_MODEL = 'stale-model'
-            }
-        } | ConvertTo-Json -Depth 10
-        [System.IO.File]::WriteAllText($settingsPath, $initial, [System.Text.Encoding]::UTF8)
         & $Script configure-models -ClaudeSettingsPath $settingsPath -OpusModel 'gpt-opus-test(high)' -SonnetModel 'gpt-sonnet-test(medium)' -HaikuModel 'gpt-haiku-test(low)' 2>&1 | Out-Null
         $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL -ne 'gpt-opus-test(high)') { throw 'Opus model mismatch.' }
-        if ($settings.env.ANTHROPIC_MODEL -ne 'gpt-opus-test(high)') { throw 'ANTHROPIC_MODEL should match Opus model.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL -ne 'gpt-sonnet-test(medium)') { throw 'Sonnet model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -ne 'gpt-haiku-test(low)') { throw 'Haiku model mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME -ne 'gpt-opus-test') { throw 'Opus model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME -ne 'gpt-sonnet-test') { throw 'Sonnet model name mismatch.' }
         if ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME -ne 'gpt-haiku-test') { throw 'Haiku model name mismatch.' }
-        if ($settings.env.EXISTING_KEY -ne 'keep-me') { throw 'configure-models should preserve unrelated env values.' }
-        if ($settings.language -ne 'zh-CN') { throw 'configure-models should preserve non-env Claude settings.' }
     } finally {
         Remove-Item $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
     }

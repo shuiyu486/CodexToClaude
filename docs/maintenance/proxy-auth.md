@@ -100,7 +100,6 @@ OCC：
 - CLIProxy 后端移除 `CLAUDE_CODE_EFFORT_LEVEL`，不写死 max，让 Claude Code 请求中的 reasoning/thinking/effort 语义透传给 CLIProxyAPI 和上游。
 - OCC 后端设置 `CLAUDE_CODE_EFFORT_LEVEL = "max"`。
 - 自定义 `ANTHROPIC_BASE_URL` 下 Claude Code 默认禁用 ToolSearch；CodexToClaude `configure` 必须显式写入 `ENABLE_TOOL_SEARCH = "true"`，并用 `verify -CheckToolSearch` 作为显式 opt-in 兼容性检查。
-- `ANTHROPIC_MODEL` 必须与 `ANTHROPIC_DEFAULT_OPUS_MODEL` 同步；`configure` / `configure-models` 遇到旧值时也要覆盖，避免遗留模型值优先影响 Claude Code 默认模型选择。
 - 自动压缩阈值是显式 opt-in：`AutoCompact Unset` 或未传参数时不新增、不删除、不覆盖 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` / `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`；`Enabled` 必须同时提供 window 和 pct 并写入字符串 env；`Disabled` 删除这两个 env。
 - 自动压缩阈值只影响 Claude Code 的近似触发计算，不承诺精确 token 点触发。
 
@@ -120,7 +119,6 @@ OCC：
 - `NO_PROXY`
 - `no_proxy`
 - `ANTHROPIC_DEFAULT_OPUS_MODEL`
-- `ANTHROPIC_MODEL`
 - `ANTHROPIC_DEFAULT_SONNET_MODEL`
 - `ANTHROPIC_DEFAULT_HAIKU_MODEL`
 - `ANTHROPIC_DEFAULT_OPUS_MODEL_NAME`
