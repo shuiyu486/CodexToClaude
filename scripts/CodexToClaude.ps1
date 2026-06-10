@@ -589,6 +589,18 @@ function Write-RecentProviderFailureHint([string]$Hint) {
     }
 }
 
+function Get-ClaudeReasoningConflictHint([string]$Text) {
+    if (-not $Text) { return '' }
+    if ($Text -notmatch 'thinking options type cannot be disabled when reasoning_effort is set') { return '' }
+    return 'Claude Code sent reasoning_effort while thinking was explicitly disabled. CodexToClaude default CLIProxy config does not generate payload.filter; check cli-proxy-api\config.yaml and any legacy CLIProxyAPI request rewriting for payload.filter entries touching thinking, reasoning, reasoning.effort, or reasoning_effort. Remove that legacy filter and restart. If no such filter exists, the conflict is likely inside the current CLIProxyAPI/upstream compatibility layer rather than CodexToClaude settings merge.'
+}
+
+function Add-ClaudeReasoningConflictHint([string]$Message) {
+    $hint = Get-ClaudeReasoningConflictHint $Message
+    if ($hint) { return "$Message`n$hint" }
+    return $Message
+}
+
 function Test-ServiceHealth([int]$ResolvedPort, [string]$HealthEndpoint, [int]$TimeoutSeconds = 2) {
     if (-not $HealthEndpoint) { $HealthEndpoint = $PMeta.HealthEndpoint }
     $healthUrl = "http://127.0.0.1:$ResolvedPort$HealthEndpoint"
@@ -938,7 +950,7 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
         if (-not $proc.HasExited) {
             try { Stop-Process -Id $proc.Id -Force -Confirm:$false } catch { }
             $errTail = ''
-            if (Test-Path $stderr) { $errTail = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 20 }
+            if (Test-Path $stderr) { $errTail = Add-ClaudeReasoningConflictHint (Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 20) }
             throw "Claude stream-json check timed out after 60 seconds. Local proxy may be hung or not draining streaming responses. $errTail"
         }
         try { $proc.WaitForExit(1000) | Out-Null; $proc.Refresh() } catch { }
@@ -946,7 +958,7 @@ function Test-ClaudeStreamJson([int]$ResolvedPort) {
         if (Test-Path $stdout) { $output += Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
         if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
             $err = ''
-            if (Test-Path $stderr) { $err = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30 }
+            if (Test-Path $stderr) { $err = Add-ClaudeReasoningConflictHint (Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30) }
             throw "claude.exe exited with code $($proc.ExitCode). $err"
         }
     } finally {
@@ -1022,7 +1034,7 @@ function Invoke-ToolSearchVerify([int]$ResolvedPort) {
         if (-not $proc.HasExited) {
             try { Stop-Process -Id $proc.Id -Force -Confirm:$false } catch { }
             $errTail = ''
-            if (Test-Path $stderr) { $errTail = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 20 }
+            if (Test-Path $stderr) { $errTail = Add-ClaudeReasoningConflictHint (Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 20) }
             throw "ToolSearch check timed out after 60 seconds. Local proxy may not support ENABLE_TOOL_SEARCH=true. $errTail"
         }
         try { $proc.WaitForExit(1000) | Out-Null; $proc.Refresh() } catch { }
@@ -1030,7 +1042,7 @@ function Invoke-ToolSearchVerify([int]$ResolvedPort) {
         if (Test-Path $stdout) { $output += Get-Content $stdout -Raw -ErrorAction SilentlyContinue }
         if ($null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
             $err = ''
-            if (Test-Path $stderr) { $err = Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30 }
+            if (Test-Path $stderr) { $err = Add-ClaudeReasoningConflictHint (Get-SafeTextTail (Get-Content $stderr -Raw -ErrorAction SilentlyContinue) 30) }
             throw "claude.exe exited with code $($proc.ExitCode) while ENABLE_TOOL_SEARCH=true. $err"
         }
     } finally {
@@ -1261,7 +1273,7 @@ function Invoke-VerifyWithRecovery([int]$ResolvedPort) {
         $firstError = $_
         if ($recoveryAttempted) { throw }
         $recoveryAttempted = $true
-        Write-Warn "Verify failed: $($firstError.Exception.Message)"
+        Write-Warn "Verify failed: $(Add-ClaudeReasoningConflictHint $firstError.Exception.Message)"
         $firstHint = Get-RecentProviderFailureHint
         Write-RecentProviderFailureHint $firstHint
         Write-Warn 'Attempting one restart recovery before retrying verify.'
@@ -1280,7 +1292,7 @@ function Invoke-VerifyWithRecovery([int]$ResolvedPort) {
             }
             $finalHint = Get-RecentProviderFailureHint
             Write-RecentProviderFailureHint $finalHint
-            $failure = "Verify failed after one restart recovery. First error: $($firstError.Exception.Message). Second error: $($_.Exception.Message)"
+            $failure = "Verify failed after one restart recovery. First error: $(Add-ClaudeReasoningConflictHint $firstError.Exception.Message). Second error: $(Add-ClaudeReasoningConflictHint $_.Exception.Message)"
             if ($finalHint) { $failure = "$failure Hint: $finalHint" }
             throw $failure
         }

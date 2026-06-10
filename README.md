@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.33-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.34-lightgrey.svg"></a>
 </p>
 
 ## Preface
@@ -311,6 +311,7 @@ CodexToClaude/
 | `verify` times out or reports TLS errors | `ProxyMode Auto` can retry with SOCKS5; Codex auth JSON is tagged with `websockets: true` when missing. If repeated `/v1/messages?beta=true` calls still timeout, use `Socks5` explicitly and keep the watchdog enabled. Explicit `Socks5` stays pinned; watchdog restarts hung requests but does not switch it back to HTTP. |
 | `verify` returns 403 / forbidden and the error log contains `Enable JavaScript and cookies to continue` | `chatgpt.com/backend-api/codex/responses` returned a Cloudflare challenge. The generated config now writes `codex-header-defaults.user-agent` as a Codex OAuth upstream UA fallback; if it still fails, the current network or proxy exit is likely risk-blocked. Try a different proxy exit or network, then rerun `Configure` + `Restart` + `Verify`. |
 | Claude Code reports socket closed or local proxy 502 | Run `Configure` again so `NO_PROXY` / `no_proxy` includes `127.0.0.1:<Port>`, then restart Claude Code. Fast upstream 5xx responses are retried by Claude Code; the watchdog only restarts requests stuck for 3 minutes, reducing premature kills of normal long reasoning streams. |
+| Claude Code reports `thinking options type cannot be disabled when reasoning_effort is set` | The request carries `reasoning_effort` while `thinking` is explicitly disabled. Run `status` for risk diagnostics, then check `cli-proxy-api\config.yaml` for legacy `payload.filter` entries touching `thinking`, `reasoning`, or `reasoning_effort`. The default config does not generate this combination. |
 | Claude Code still uses old models | Click `Configure`, click `Restart`, then restart Claude Code. |
 | Port is already in use | Pick another port, then rerun `Configure` + `Restart` + `Verify`. |
 
@@ -335,6 +336,8 @@ CodexToClaude only forwards headers; rendering usage limits is handled by your s
 CodexToClaude passes `reasoning` / `reasoning.effort` / `thinking` through to CLIProxyAPI by default, so the backend can follow the current Claude Code `/effort` or `effortLevel` instead of a hard-coded max effort.
 
 If Codex thinking streams cause duplicated characters, very long thinking output, or other TUI display issues, you can manually add this compatibility filter to `cli-proxy-api/config.yaml` and restart CodexToClaude. This disables those thinking-related request fields for matching Codex models.
+
+Note: this is a manual compatibility option, not the default. If Claude Code also sends `reasoning_effort`, and a legacy filter or rewrite disables only `thinking` without removing the effort field, upstream may return `thinking options type cannot be disabled when reasoning_effort is set`. Remove the legacy `payload.filter`, restart, and verify.
 
 ```yaml
 payload:

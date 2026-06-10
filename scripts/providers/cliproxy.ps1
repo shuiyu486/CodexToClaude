@@ -221,6 +221,9 @@ function CLIProxy-GetRiskDiagnostics {
 
     if ($raw -match 'payload:\s*[\s\S]*filter:') {
         $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter is present; CLIProxy defaults to passing through reasoning/thinking/effort parameters. Keep this legacy filter only if you intentionally want local request rewriting.' }
+        if ($raw -match '(?i)(thinking|reasoning(?:[._-]?effort)?|reasoning_effort)') {
+            $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter mentions thinking/reasoning fields. If Claude Code sends effortLevel/reasoning_effort while the filter disables thinking, upstream can reject the request with: thinking options type cannot be disabled when reasoning_effort is set.' }
+        }
     }
 
     $configProxy = Read-ConfigProxyUrl

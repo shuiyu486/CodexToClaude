@@ -99,6 +99,7 @@ TestCase 'Wait-ServiceReady requires health endpoint success' {
 }
 
 TestCase 'Claude stream-json check uses bounded watchdog' {
+    $source = Get-Content $Script -Raw -Encoding UTF8
     $func = Get-FunctionAst $Script 'Test-ClaudeStreamJson'
     $body = $func.Body.Extent.Text
     $commands = @($func.Body.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
@@ -118,6 +119,9 @@ TestCase 'Claude stream-json check uses bounded watchdog' {
     }
     if ($body -match [regex]::Escape('payload.filter may need update')) {
         throw 'Claude stream-json diagnostics must not recommend restoring payload.filter.'
+    }
+    if ($source -notmatch 'Get-ClaudeReasoningConflictHint' -or $source -notmatch [regex]::Escape('thinking options type cannot be disabled when reasoning_effort is set')) {
+        throw 'Claude diagnostics should explain reasoning_effort plus disabled thinking conflicts.'
     }
     if ($body -notmatch 'thinking_delta_count') {
         throw 'Claude stream-json diagnostics should report thinking_delta_count.'
@@ -163,6 +167,9 @@ TestCase 'CLIProxy risk diagnostics checks hang-prone configuration' {
         if ($clip -notmatch [regex]::Escape($field)) { throw "CLIProxy risk diagnostics missing check for $field" }
     }
     if ($clip -match [regex]::Escape('payload.filter should remove reasoning, reasoning.effort, and thinking')) { throw 'CLIProxy risk diagnostics should not require payload filtering.' }
+    if ($clip -notmatch [regex]::Escape('payload.filter mentions thinking/reasoning fields') -or $clip -notmatch [regex]::Escape('thinking options type cannot be disabled when reasoning_effort is set')) {
+        throw 'CLIProxy risk diagnostics should warn about legacy payload.filter thinking/reasoning conflicts.'
+    }
 }
 
 TestCase 'Port process detection ignores stale TCP connections' {

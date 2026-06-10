@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.33-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.34-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -310,6 +310,7 @@ CodexToClaude/
 | `verify` 超时或 TLS 错误 | `ProxyMode Auto` 会尝试从 HTTP 切换到 SOCKS5；Codex auth JSON 缺少 `websockets` 时会自动补 `true`。如果多次 `/v1/messages?beta=true` 仍超时，建议显式使用 `Socks5` 并保持 watchdog 开启。显式 `Socks5` 会固定为 SOCKS5；watchdog 只重启卡住请求，不会切回 HTTP。 |
 | `verify` 报 403 / 已禁止，且错误日志包含 `Enable JavaScript and cookies to continue` | 这是 `chatgpt.com/backend-api/codex/responses` 返回的 Cloudflare challenge。当前配置会写入 `codex-header-defaults.user-agent` 作为 Codex OAuth 上游 UA fallback；如果仍失败，通常是当前网络或代理出口被风控，换一个代理出口或网络后重新执行 `配置` + `重启` + `验证`。 |
 | Claude Code 报 socket closed 或本地代理 502 | 重新执行 `配置`，确保 `NO_PROXY` / `no_proxy` 包含 `127.0.0.1:<Port>`，然后重启 Claude Code。快速上游 5xx 交给 Claude Code 自身重试；watchdog 只会重启卡住 3 分钟的请求，降低过早杀掉正常长 reasoning 流的概率。 |
+| Claude Code 报 `thinking options type cannot be disabled when reasoning_effort is set` | 这表示请求同时携带 `reasoning_effort` 且显式禁用了 `thinking`。先运行 `status` 查看风险诊断；重点检查 `cli-proxy-api\config.yaml` 是否有遗留 `payload.filter` 触碰 `thinking` / `reasoning` / `reasoning_effort`。默认配置不会生成该组合。 |
 | Claude Code 仍访问旧模型 | 先点 `配置`，再点 `重启`，然后重启 Claude Code 客户端。 |
 | 端口被占用 | 换一个端口，并重新执行 `配置` + `重启` + `验证`。 |
 
@@ -334,6 +335,8 @@ CodexToClaude 只负责透传 headers，不负责状态栏渲染。
 CodexToClaude 默认会把 `reasoning` / `reasoning.effort` / `thinking` 透传给 CLIProxyAPI，让后端跟随 Claude Code 当前 `/effort` 或 `effortLevel`，而不是把思考强度写死为 max。
 
 如果 Codex thinking 流导致中文重复字符、thinking 输出过长或其它 TUI 展示异常，可以手动在 `cli-proxy-api/config.yaml` 中加入下面的兼容过滤配置，然后重启 CodexToClaude。这样会关闭匹配 Codex 模型的这些思考相关请求字段。
+
+注意：这是手动兼容选项，不是默认配置。若 Claude Code 同时发送 `reasoning_effort`，而过滤/改写只禁用了 `thinking` 但没有同步移除 effort 字段，上游可能返回 `thinking options type cannot be disabled when reasoning_effort is set`。出现该错误时请先移除遗留 `payload.filter`，再重启验证。
 
 ```yaml
 payload:

@@ -35,6 +35,7 @@ CLIProxyAPI config：
 - 保留 `debug: true` 和 `logging-to-file: true`，让 CLIProxyAPI v7.1.61+ 写入 Codex backend request IDs，便于把 Claude Code 侧失败关联到上游请求。
 - 保留日志清理上限：`logs-max-total-size-mb: 10` 和 `error-logs-max-files: 5`，避免诊断日志无限增长。
 - 默认不生成 `payload.filter`，透传 `reasoning`、`reasoning.effort`、`thinking`，让 Claude Code 当前 `/effort` / `effortLevel` 决定请求语义；如需规避 thinking 流展示问题，只能由用户手动添加兼容过滤配置。
+- 若出现 `thinking options type cannot be disabled when reasoning_effort is set`，优先检查实际 `config.yaml` 中是否有遗留 `payload.filter` 触碰 `thinking` / `reasoning` / `reasoning_effort`。该错误表示请求同时携带 `reasoning_effort` 且显式禁用了 `thinking`；CodexToClaude 默认配置不应生成这种组合。
 
 OCC config：
 
