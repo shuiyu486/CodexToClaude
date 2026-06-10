@@ -32,6 +32,8 @@ CLIProxyAPI config：
 - 保留 `passthrough-headers: true`。
 - 保留 `codex-header-defaults.user-agent`，用于 CLIProxyAPI 的 Codex OAuth 上游 HTTP/websocket 请求 fallback UA，降低空/异常 UA 触发上游风控的概率。
 - 保留 bounded retry 相关默认值的诊断可见性。
+- 保留 `debug: true` 和 `logging-to-file: true`，让 CLIProxyAPI v7.1.61+ 写入 Codex backend request IDs，便于把 Claude Code 侧失败关联到上游请求。
+- 保留日志清理上限：`logs-max-total-size-mb: 10` 和 `error-logs-max-files: 5`，避免诊断日志无限增长。
 - 默认不生成 `payload.filter`，透传 `reasoning`、`reasoning.effort`、`thinking`，让 Claude Code 当前 `/effort` / `effortLevel` 决定请求语义；如需规避 thinking 流展示问题，只能由用户手动添加兼容过滤配置。
 
 OCC config：
@@ -151,6 +153,7 @@ OCC：
 - `verify -CheckTools` 检查 `tools`、`tool_use`、`tool_result` 基本链路。
 - `verify -CheckToolSearch` 检查 `tool_reference` 指向 deferred tool 的链路，并确认 Claude Code 在 `ENABLE_TOOL_SEARCH=true` 下能通过当前 provider 完成 stream-json smoke。
 - `verify -CheckPromptCaching` 检查 prompt caching 的 `usage` 字段是否保留。
+- CLIProxy 风险诊断检查 `debug`、`logging-to-file`、`logs-max-total-size-mb`、`error-logs-max-files`，确保 Codex backend request IDs 可落盘且日志有清理边界。
 
 提交前检查：
 

@@ -160,9 +160,11 @@ max-retry-interval: 5
 streaming:
   bootstrap-retries: 1
   keepalive-seconds: 15
+# Keep debug + file logging enabled so CLIProxyAPI v7.1.61+ records Codex backend request IDs.
 debug: true
 logging-to-file: true
 logs-max-total-size-mb: 10
+error-logs-max-files: 5
 "@
     Write-FileUtf8NoBom $ConfigPath $content
     CLIProxy-SyncAuthProxyUrl $ResolvedProxyUrl
@@ -202,6 +204,20 @@ function CLIProxy-GetRiskDiagnostics {
     if ($raw -notmatch '(?m)^\s*antigravity-credits:\s*false\s*$') {
         $items += [pscustomobject]@{ Level = 'warn'; Message = 'quota-exceeded.antigravity-credits should be false to avoid unexpected fallback paths.' }
     }
+
+    $debug = CLIProxy-GetConfigValue 'debug'
+    if ($debug -ne 'true') { $items += [pscustomobject]@{ Level = 'warn'; Message = 'debug should be true so CLIProxyAPI records Codex backend request IDs for diagnostics.' } }
+
+    $loggingToFile = CLIProxy-GetConfigValue 'logging-to-file'
+    if ($loggingToFile -ne 'true') { $items += [pscustomobject]@{ Level = 'warn'; Message = 'logging-to-file should be true so Codex backend request IDs are kept in logs/main.log.' } }
+
+    $logsMaxTotalSizeMb = CLIProxy-GetConfigValue 'logs-max-total-size-mb'
+    if (-not $logsMaxTotalSizeMb) { $items += [pscustomobject]@{ Level = 'warn'; Message = 'logs-max-total-size-mb is missing; recommended value is 10.' } }
+    elseif ([int]$logsMaxTotalSizeMb -le 0) { $items += [pscustomobject]@{ Level = 'warn'; Message = "logs-max-total-size-mb=$logsMaxTotalSizeMb disables log cleanup; recommended value is 10." } }
+
+    $errorLogsMaxFiles = CLIProxy-GetConfigValue 'error-logs-max-files'
+    if (-not $errorLogsMaxFiles) { $items += [pscustomobject]@{ Level = 'warn'; Message = 'error-logs-max-files is missing; recommended value is 5.' } }
+    elseif ([int]$errorLogsMaxFiles -le 0) { $items += [pscustomobject]@{ Level = 'warn'; Message = "error-logs-max-files=$errorLogsMaxFiles disables error log cleanup; recommended value is 5." } }
 
     if ($raw -match 'payload:\s*[\s\S]*filter:') {
         $items += [pscustomobject]@{ Level = 'warn'; Message = 'payload.filter is present; CLIProxy defaults to passing through reasoning/thinking/effort parameters. Keep this legacy filter only if you intentionally want local request rewriting.' }

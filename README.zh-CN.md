@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.31-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.32-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -305,7 +305,7 @@ CodexToClaude/
 | 问题 | 处理方式 |
 |------|----------|
 | GUI 打不开 | 在项目目录执行 `Unblock-File`，或用 PowerShell 运行 `powershell -ExecutionPolicy Bypass -File .\scripts\CodexToClaude.UI.ps1`。 |
-| Codex 登录失败 | 检查代理；重新运行 `install/configure`；尝试 `login -Device`；查看 `cli-proxy-api\logs\main.log`。 |
+| Codex 登录失败 | 检查代理；重新运行 `install/configure`；尝试 `login -Device`；查看 `cli-proxy-api\logs\main.log`。CLIProxyAPI v7.1.61+ 在启用 `debug` 和文件日志时会在这里记录 Codex backend request IDs。 |
 | OpenCode Go 提示没有 API Key | 设置环境变量 `OC_GO_CC_API_KEY`，或在 GUI 的 API Key 输入框填写后点击 `配置`。 |
 | `verify` 超时或 TLS 错误 | `ProxyMode Auto` 会尝试从 HTTP 切换到 SOCKS5；Codex auth JSON 缺少 `websockets` 时会自动补 `true`。如果多次 `/v1/messages?beta=true` 仍超时，建议显式使用 `Socks5` 并保持 watchdog 开启。显式 `Socks5` 会固定为 SOCKS5；watchdog 只重启卡住请求，不会切回 HTTP。 |
 | `verify` 报 403 / 已禁止，且错误日志包含 `Enable JavaScript and cookies to continue` | 这是 `chatgpt.com/backend-api/codex/responses` 返回的 Cloudflare challenge。当前配置会写入 `codex-header-defaults.user-agent` 作为 Codex OAuth 上游 UA fallback；如果仍失败，通常是当前网络或代理出口被风控，换一个代理出口或网络后重新执行 `配置` + `重启` + `验证`。 |

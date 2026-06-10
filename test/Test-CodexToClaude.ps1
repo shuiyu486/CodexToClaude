@@ -159,7 +159,7 @@ TestCase 'Provider start validates health for existing listeners' {
 TestCase 'CLIProxy risk diagnostics checks hang-prone configuration' {
     $clip = Get-Content (Join-Path $RepoRoot 'scripts\providers\cliproxy.ps1') -Raw -Encoding UTF8
     if ($clip -notmatch 'function\s+CLIProxy-GetRiskDiagnostics') { throw 'CLIProxy-GetRiskDiagnostics missing.' }
-    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits')) {
+    foreach ($field in @('request-retry', 'max-retry-credentials', 'max-retry-interval', 'bootstrap-retries', 'antigravity-credits', 'debug', 'logging-to-file', 'logs-max-total-size-mb', 'error-logs-max-files')) {
         if ($clip -notmatch [regex]::Escape($field)) { throw "CLIProxy risk diagnostics missing check for $field" }
     }
     if ($clip -match [regex]::Escape('payload.filter should remove reasoning, reasoning.effort, and thinking')) { throw 'CLIProxy risk diagnostics should not require payload filtering.' }
@@ -346,6 +346,11 @@ TestCase 'ProxyUrl none configure writes no proxy-url line' {
         if ($config -notmatch '(?m)^passthrough-headers:\s*true\r?$') { throw 'CLIProxy should forward upstream response headers.' }
         if ($config -notmatch '(?m)^request-retry:\s*1\r?$') { throw 'CLIProxy request retry should be bounded.' }
         if ($config -notmatch '(?m)^max-retry-credentials:\s*1\r?$') { throw 'CLIProxy credential retry should be bounded.' }
+        if ($config -notmatch '(?m)^debug:\s*true\r?$') { throw 'CLIProxy debug logging should stay enabled for Codex request ID diagnostics.' }
+        if ($config -notmatch '(?m)^logging-to-file:\s*true\r?$') { throw 'CLIProxy should persist logs to capture Codex request IDs.' }
+        if ($config -notmatch '(?m)^logs-max-total-size-mb:\s*10\r?$') { throw 'CLIProxy log directory size cap should be configured.' }
+        if ($config -notmatch '(?m)^error-logs-max-files:\s*5\r?$') { throw 'CLIProxy error log retention should be configured.' }
+        if ($config -notmatch [regex]::Escape('Codex backend request IDs')) { throw 'CLIProxy config should document Codex request ID logging.' }
         if ($config -notmatch '(?m)^\s*antigravity-credits:\s*false\r?$') { throw 'CLIProxy should not fall back to Antigravity credits by default.' }
         if ($config -match '(?m)^payload:\s*$' -or $config -match '(?m)^\s*filter:\s*$') { throw 'CLIProxy should pass through Claude reasoning and thinking by default.' }
         if ($config -match [regex]::Escape('reasoning.effort') -or $config -match '(?m)^\s*-\s*"thinking"\s*$') { throw 'CLIProxy should not filter Claude reasoning or thinking by default.' }
