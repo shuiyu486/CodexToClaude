@@ -14,7 +14,7 @@
   <a href="./README.zh-CN.md"><img alt="中文" src="https://img.shields.io/badge/lang-中文-red.svg"></a>
   <a href="https://learn.microsoft.com/en-us/powershell/"><img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5.1+-blue.svg"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
-  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.32-lightgrey.svg"></a>
+  <a href="./VERSION"><img alt="Version" src="https://img.shields.io/badge/version-v1.0.0.33-lightgrey.svg"></a>
 </p>
 
 ## 前言
@@ -43,7 +43,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 📊 **状态栏用量显示** — 推荐配合安装 [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline)，它可以读取 CodexToClaude 透传的 `X-Codex-*` headers，并在状态栏显示 5h/7d usage limits。
 - 🌐 **内置代理模式** — 支持 `Auto`、`Http`、`Socks5`、`Direct`；`Auto` 可在超时类故障后在 HTTP 和 SOCKS5 之间切换。
 - 🧪 **端到端验证** — 自动检查 `/v1/models`、`/v1/messages` 和 Claude Code stream-json。
-- 🛟 **卡住恢复 watchdog** — `/v1/messages` 请求超过 60 秒仍未完成时自动重启 CLIProxyAPI；`Auto` 模式会统计近期 HTTP/SOCKS5 卡住次数，并临时固定到更少卡住的一侧。显式 `Http`、`Socks5`、`Direct` 模式不会被自动切换覆盖。
+- 🛟 **卡住恢复 watchdog** — `/v1/messages` 请求超过 5 分钟仍未完成时自动重启 CLIProxyAPI；`Auto` 模式会统计近期 HTTP/SOCKS5 卡住次数，并临时固定到更少卡住的一侧。显式 `Http`、`Socks5`、`Direct` 模式不会被自动切换覆盖。
 - 🔌 **Codex WebSocket auth 标记** — enabled Codex OAuth JSON 缺少 `websockets` 时自动补 `true`，并保留已有显式值。
 - 🧭 **本地代理绕过** — 自动为本地 provider URL 写入 `NO_PROXY` / `no_proxy`，避免 Claude Code 把 `127.0.0.1:<Port>` 请求送进系统代理。
 - 🖥️ **命令行代理环境变量** — 诊断工具可把当前代理配置写入用户级 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`，方便新开的 cmd、PowerShell、Git Bash 使用；不会设置 Windows 系统代理或 WinHTTP。
@@ -309,7 +309,7 @@ CodexToClaude/
 | OpenCode Go 提示没有 API Key | 设置环境变量 `OC_GO_CC_API_KEY`，或在 GUI 的 API Key 输入框填写后点击 `配置`。 |
 | `verify` 超时或 TLS 错误 | `ProxyMode Auto` 会尝试从 HTTP 切换到 SOCKS5；Codex auth JSON 缺少 `websockets` 时会自动补 `true`。如果多次 `/v1/messages?beta=true` 仍超时，建议显式使用 `Socks5` 并保持 watchdog 开启。显式 `Socks5` 会固定为 SOCKS5；watchdog 只重启卡住请求，不会切回 HTTP。 |
 | `verify` 报 403 / 已禁止，且错误日志包含 `Enable JavaScript and cookies to continue` | 这是 `chatgpt.com/backend-api/codex/responses` 返回的 Cloudflare challenge。当前配置会写入 `codex-header-defaults.user-agent` 作为 Codex OAuth 上游 UA fallback；如果仍失败，通常是当前网络或代理出口被风控，换一个代理出口或网络后重新执行 `配置` + `重启` + `验证`。 |
-| Claude Code 报 socket closed 或本地代理 502 | 重新执行 `配置`，确保 `NO_PROXY` / `no_proxy` 包含 `127.0.0.1:<Port>`，然后重启 Claude Code。快速上游 5xx 交给 Claude Code 自身重试；watchdog 只处理长时间卡住请求。 |
+| Claude Code 报 socket closed 或本地代理 502 | 重新执行 `配置`，确保 `NO_PROXY` / `no_proxy` 包含 `127.0.0.1:<Port>`，然后重启 Claude Code。快速上游 5xx 交给 Claude Code 自身重试；watchdog 只会重启卡住 5 分钟的请求，避免过早杀掉正常的长 reasoning 流。 |
 | Claude Code 仍访问旧模型 | 先点 `配置`，再点 `重启`，然后重启 Claude Code 客户端。 |
 | 端口被占用 | 换一个端口，并重新执行 `配置` + `重启` + `验证`。 |
 
