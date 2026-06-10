@@ -31,7 +31,7 @@ param(
     [switch]$CheckPromptCaching,
     [switch]$CheckToolSearch,
     [switch]$Json,
-    [int]$WatchdogTimeoutSeconds = 300
+    [int]$WatchdogTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'

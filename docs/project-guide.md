@@ -70,7 +70,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 ## Watchdog 契约
 
 - CLIProxy 启动后必须同时启动 CodexToClaude watchdog；`stop` 必须关闭 watchdog。
-- Watchdog 只处理启动后的新 `/v1/messages` 长请求；默认 300 秒仍未完成时重启当前 CLIProxy provider，避免误杀正常的长 reasoning/streaming 请求。
+- Watchdog 只处理启动后的新 `/v1/messages` 长请求；默认 180 秒仍未完成时重启当前 CLIProxy provider，降低误杀正常长 reasoning/streaming 请求的概率，同时保留较快恢复。
 - Watchdog 不得因快速返回的 5xx 重启 provider，避免切断 Claude Code 流式请求。
 - `ProxyMode Auto` 下可在 HTTP/SOCKS5 间切换并记录状态；显式 `Http` / `Socks5` / `Direct` 不得被覆盖。
 - Watchdog 子进程运行时读取持久化 proxy mode，不要把启动时的 `ProxyMode` 固化到命令行。

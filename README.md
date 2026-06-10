@@ -43,7 +43,7 @@ Claude Code -> http://127.0.0.1:<Port> -> CLIProxyAPI -> Codex OAuth -> Codex mo
 - 📊 **Usage limits in status line** — Recommended with [`cc-statusline`](https://github.com/shuiyu486/terr-marketplace/tree/main/plugins/cc-statusline), which reads CodexToClaude's forwarded `X-Codex-*` headers and shows 5h/7d usage limits.
 - 🌐 **Proxy modes built in** — Supports `Auto`, `Http`, `Socks5`, and `Direct`; `Auto` can switch between HTTP and SOCKS5 after timeout-style failures.
 - 🧪 **End-to-end verification** — Checks `/v1/models`, `/v1/messages`, and Claude Code stream-json.
-- 🛟 **Hang recovery watchdog** — Restarts CLIProxyAPI when a `/v1/messages` request runs longer than 5 minutes; in `Auto` mode, repeated HTTP/SOCKS5 stalls are scored so the less failure-prone scheme is pinned temporarily. Explicit `Http`, `Socks5`, and `Direct` modes never auto-switch.
+- 🛟 **Hang recovery watchdog** — Restarts CLIProxyAPI when a `/v1/messages` request runs longer than 3 minutes; in `Auto` mode, repeated HTTP/SOCKS5 stalls are scored so the less failure-prone scheme is pinned temporarily. Explicit `Http`, `Socks5`, and `Direct` modes never auto-switch.
 - 🔌 **Codex WebSocket auth tagging** — Ensures enabled Codex OAuth JSON has `websockets: true` when missing, while preserving explicit values.
 - 🧭 **Local proxy bypass** — Writes `NO_PROXY` / `no_proxy` for the local provider URL so Claude Code does not send `127.0.0.1:<Port>` traffic through your system proxy.
 - 🖥️ **Command-line proxy env** — The diagnostics tools can write the current proxy config to User-scope `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` for new cmd, PowerShell, and Git Bash sessions, without changing Windows system proxy or WinHTTP.
@@ -310,7 +310,7 @@ CodexToClaude/
 | OpenCode Go says no API key | Set `OC_GO_CC_API_KEY`, or enter the key in the GUI and click `Configure`. |
 | `verify` times out or reports TLS errors | `ProxyMode Auto` can retry with SOCKS5; Codex auth JSON is tagged with `websockets: true` when missing. If repeated `/v1/messages?beta=true` calls still timeout, use `Socks5` explicitly and keep the watchdog enabled. Explicit `Socks5` stays pinned; watchdog restarts hung requests but does not switch it back to HTTP. |
 | `verify` returns 403 / forbidden and the error log contains `Enable JavaScript and cookies to continue` | `chatgpt.com/backend-api/codex/responses` returned a Cloudflare challenge. The generated config now writes `codex-header-defaults.user-agent` as a Codex OAuth upstream UA fallback; if it still fails, the current network or proxy exit is likely risk-blocked. Try a different proxy exit or network, then rerun `Configure` + `Restart` + `Verify`. |
-| Claude Code reports socket closed or local proxy 502 | Run `Configure` again so `NO_PROXY` / `no_proxy` includes `127.0.0.1:<Port>`, then restart Claude Code. Fast upstream 5xx responses are retried by Claude Code; the watchdog only restarts requests stuck for 5 minutes, so normal long reasoning streams are not killed early. |
+| Claude Code reports socket closed or local proxy 502 | Run `Configure` again so `NO_PROXY` / `no_proxy` includes `127.0.0.1:<Port>`, then restart Claude Code. Fast upstream 5xx responses are retried by Claude Code; the watchdog only restarts requests stuck for 3 minutes, reducing premature kills of normal long reasoning streams. |
 | Claude Code still uses old models | Click `Configure`, click `Restart`, then restart Claude Code. |
 | Port is already in use | Pick another port, then rerun `Configure` + `Restart` + `Verify`. |
 

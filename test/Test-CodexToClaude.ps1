@@ -213,7 +213,7 @@ TestCase 'CLIProxy watchdog auto-recovers long stream requests' {
     foreach ($cmd in @('watchdog-run', 'watchdog-start', 'watchdog-stop')) {
         if ($source -notmatch [regex]::Escape("'$cmd'")) { throw "Command missing: $cmd" }
     }
-    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*300') { throw 'Provider watchdog timeout should be 300 seconds.' }
+    if ($source -notmatch '\$WatchdogTimeoutSeconds\s*=\s*180') { throw 'Provider watchdog timeout should be 180 seconds.' }
     if ($source -notmatch '\$script:AutoProxyDecisionWindowSeconds\s*=\s*600') { throw 'Auto proxy decision window should be 10 minutes.' }
     if ($source -notmatch '\$script:AutoProxyDecisionMinEvents\s*=\s*3') { throw 'Auto proxy decision should require multiple stale events.' }
     if ($source -notmatch '\$script:AutoProxyPinSeconds\s*=\s*1800') { throw 'Auto proxy pin duration should be 30 minutes.' }
